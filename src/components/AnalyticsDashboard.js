@@ -17,7 +17,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from 'recharts';
 import { Clock, CheckCircle, Target, TrendingUp } from 'lucide-react';
@@ -122,8 +121,6 @@ const AnalyticsDashboard = () => {
       { name: 'Low', value: priorityCounts.low || 0, color: '#22c55e' },
     ].filter((item) => item.value > 0);
   }, [tasks]);
-
-  const COLORS = ['#0ea5e9', '#22c55e', '#eab308', '#ef4444'];
 
   return (
     <div className="space-y-6 animate-fade-in">

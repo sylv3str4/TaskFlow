@@ -3,7 +3,7 @@
  * Customizable Pomodoro timer with session tracking
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { Play, Pause, RotateCcw, Settings, Check } from 'lucide-react';
 
@@ -34,26 +34,8 @@ const PomodoroTimer = () => {
     }
   }, [settings, sessionType, isRunning]);
 
-  // Timer countdown logic
-  useEffect(() => {
-    if (isRunning && timeLeft > 0) {
-      intervalRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            handleTimerComplete();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      clearInterval(intervalRef.current);
-    }
-
-    return () => clearInterval(intervalRef.current);
-  }, [isRunning, timeLeft]);
-
-  const handleTimerComplete = () => {
+  // Handle timer completion
+  const handleTimerComplete = useCallback(() => {
     setIsRunning(false);
     
     if (sessionType === 'work') {
@@ -80,7 +62,26 @@ const PomodoroTimer = () => {
       setSessionType('work');
       setTimeLeft(settings.pomodoroWork * 60);
     }
-  };
+  }, [sessionType, completedSessions, settings, addStudyLog]);
+
+  // Timer countdown logic
+  useEffect(() => {
+    if (isRunning && timeLeft > 0) {
+      intervalRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            handleTimerComplete();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      clearInterval(intervalRef.current);
+    }
+
+    return () => clearInterval(intervalRef.current);
+  }, [isRunning, timeLeft, handleTimerComplete]);
 
   const handleStartPause = () => {
     setIsRunning(!isRunning);

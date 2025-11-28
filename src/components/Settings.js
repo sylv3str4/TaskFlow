@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Moon, Sun, Trash2, AlertCircle } from 'lucide-react';
+import { Trash2, AlertCircle } from 'lucide-react';
 
 const Settings = () => {
   const { settings, updateSettings } = useApp();
