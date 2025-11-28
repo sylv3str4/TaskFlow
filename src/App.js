@@ -15,6 +15,7 @@ import PomodoroTimer from './components/PomodoroTimer';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import Settings from './components/Settings';
 import UserProfile from './components/UserProfile';
+import PetSanctuary from './components/PetSanctuary';
 import { useApp } from './context/AppContext';
 
 // Authentication wrapper
@@ -57,6 +58,8 @@ const AppContent = () => {
         return <UserProfile />;
       case 'settings':
         return <Settings />;
+      case 'pets':
+        return <PetSanctuary />;
       default:
         return <TaskManager />;
     }

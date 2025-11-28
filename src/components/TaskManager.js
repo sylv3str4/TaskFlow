@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
-import { Plus, Edit2, Trash2, Check, Calendar, Flag, X, Sparkles, Folder, Search, CheckSquare } from 'lucide-react';
+import { Plus, Edit2, Trash2, Check, Calendar, Flag, X, Sparkles, Folder, Search, CheckSquare, Coins } from 'lucide-react';
 import { format, isPast, isToday, isTomorrow } from 'date-fns';
 
 const PRIORITY_COLORS = {
@@ -29,7 +29,14 @@ const CATEGORY_COLORS = Object.fromEntries(
 );
 
 const TaskManager = () => {
-  const { tasks, addTask, updateTask, deleteTask, toggleTask } = useApp();
+  const {
+    tasks,
+    addTask,
+    updateTask,
+    deleteTask,
+    toggleTask,
+    gamification,
+  } = useApp();
   const { success, error, info } = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
@@ -48,6 +55,13 @@ const TaskManager = () => {
   const [categoryFilter, setCategoryFilter] = useState('all'); // all or specific category
   const [sortBy, setSortBy] = useState('priority'); // priority, deadline, title, category, dateCreated
   const [searchQuery, setSearchQuery] = useState(''); // search query
+  const [coinPulse, setCoinPulse] = useState(false);
+
+  useEffect(() => {
+    setCoinPulse(true);
+    const timer = setTimeout(() => setCoinPulse(false), 600);
+    return () => clearTimeout(timer);
+  }, [gamification?.coins]);
   
   const filteredTasks = tasks.filter(task => {
     // Status filter
@@ -273,7 +287,7 @@ const TaskManager = () => {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col lg:flex-row justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Task Manager</h2>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
@@ -281,14 +295,28 @@ const TaskManager = () => {
             {searchQuery && ` • ${displayedTasksCount} result${displayedTasksCount !== 1 ? 's' : ''}`}
           </p>
         </div>
-        <button
-          onClick={() => handleOpenModal()}
-          className="btn-primary flex items-center gap-2 ripple group relative overflow-hidden"
-        >
-          <Plus size={20} className="transform group-hover:rotate-90 transition-transform duration-300" />
-          Add Task
-          <span className="hidden sm:inline text-xs opacity-75 ml-2">(⌘K)</span>
-        </button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          {gamification && (
+            <div
+              className={`flex items-center gap-2 px-4 py-2 rounded-2xl bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-200 shadow transition-all duration-500 ${
+                coinPulse ? 'scale-105 shadow-lg' : 'scale-100'
+              }`}
+            >
+              <Coins size={18} className={coinPulse ? 'animate-bounce-subtle' : ''} />
+              <div className="text-sm font-semibold">
+                {gamification.coins} Coins
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => handleOpenModal()}
+            className="btn-primary flex items-center gap-2 ripple group relative overflow-hidden justify-center"
+          >
+            <Plus size={20} className="transform group-hover:rotate-90 transition-transform duration-300" />
+            Add Task
+            <span className="hidden sm:inline text-xs opacity-75 ml-2">(⌘K)</span>
+          </button>
+        </div>
       </div>
 
       {/* Search Bar */}

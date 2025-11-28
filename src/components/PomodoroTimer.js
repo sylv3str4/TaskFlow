@@ -32,7 +32,7 @@ const playNotificationSound = () => {
 };
 
 const PomodoroTimer = () => {
-  const { settings, addStudyLog, updateSettings } = useApp();
+  const { settings, addStudyLog, updateSettings, rewardFocusSession } = useApp();
   const { success, info } = useToast();
   const [timeLeft, setTimeLeft] = useState(settings.pomodoroWork * 60); // in seconds
   const [isRunning, setIsRunning] = useState(false);
@@ -79,6 +79,7 @@ const PomodoroTimer = () => {
       });
 
       success(`Great work! Session ${newCompletedSessions} completed! 🎉`);
+      rewardFocusSession();
 
       // Check if it's time for a long break
       if (newCompletedSessions % settings.pomodoroLongBreakInterval === 0) {
@@ -96,7 +97,7 @@ const PomodoroTimer = () => {
       setTimeLeft(settings.pomodoroWork * 60);
       info('Break over! Time to focus! 💪');
     }
-  }, [sessionType, completedSessions, settings, addStudyLog, success, info]);
+  }, [sessionType, completedSessions, settings, addStudyLog, success, info, rewardFocusSession]);
 
   // Timer countdown logic
   useEffect(() => {

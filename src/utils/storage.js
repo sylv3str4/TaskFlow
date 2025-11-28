@@ -12,6 +12,7 @@ const STORAGE_KEYS = {
   TASKS: 'taskflow_tasks',
   STUDY_LOGS: 'taskflow_study_logs',
   SETTINGS: 'taskflow_settings',
+  GAMIFICATION: 'taskflow_gamification',
 };
 
 /**
@@ -94,5 +95,34 @@ export const getSettings = (userId = null) => {
 export const saveSettings = (settings, userId = null) => {
   const key = getStorageKey(STORAGE_KEYS.SETTINGS, userId);
   setStorage(key, settings);
+};
+
+// Gamification storage functions
+const defaultGamification = {
+  xp: 0,
+  level: 1,
+  xpForCurrentLevel: 0,
+  xpForNextLevel: 500,
+  coins: 0,
+  pet: {
+    name: 'Pixel',
+    species: '🐾',
+    rarity: 'Common',
+    color: '#0ea5e9',
+    mood: 'Happy',
+    energy: 70,
+    hunger: 30,
+  },
+  lastRewardReason: null,
+};
+
+export const getGamification = (userId = null) => {
+  const key = getStorageKey(STORAGE_KEYS.GAMIFICATION, userId);
+  return getStorage(key, defaultGamification);
+};
+
+export const saveGamification = (data, userId = null) => {
+  const key = getStorageKey(STORAGE_KEYS.GAMIFICATION, userId);
+  setStorage(key, data);
 };
 

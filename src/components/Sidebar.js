@@ -15,17 +15,25 @@ import {
   Menu,
   X,
   LogOut,
+  PawPrint,
+  Star,
 } from 'lucide-react';
 
 const Sidebar = () => {
-  const { activeTab, setActiveTab } = useApp();
+  const { activeTab, setActiveTab, gamification } = useApp();
   const { user, logout } = useAuth();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+
+  const xpRange = gamification?.xpForNextLevel - gamification?.xpForCurrentLevel || 0;
+  const xpProgress = xpRange > 0
+    ? ((gamification.xp - gamification.xpForCurrentLevel) / xpRange) * 100
+    : 0;
 
   const tabs = [
     { id: 'tasks', label: 'Tasks', icon: CheckSquare },
     { id: 'timer', label: 'Timer', icon: Timer },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'pets', label: 'Pets', icon: PawPrint },
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'settings', label: 'Settings', icon: SettingsIcon },
   ];
@@ -109,6 +117,25 @@ const Sidebar = () => {
                 </p>
               </div>
             </div>
+            {gamification && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  <span className="flex items-center gap-1 text-gray-700 dark:text-gray-200">
+                    <Star size={12} className="text-primary-500" />
+                    Level {gamification.level}
+                  </span>
+                  <span>
+                    {gamification.xp - gamification.xpForCurrentLevel}/{gamification.xpForNextLevel - gamification.xpForCurrentLevel} XP
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-primary-500 to-primary-300"
+                    style={{ width: `${Math.min(100, xpProgress)}%` }}
+                  />
+                </div>
+              </div>
+            )}
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-200 transform hover:scale-105 active:scale-95 hover:shadow-md"
