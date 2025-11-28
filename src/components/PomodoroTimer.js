@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
-import { Play, Pause, RotateCcw, Settings, Check, Volume2 } from 'lucide-react';
+import { Play, Pause, RotateCcw, Settings, Check, Volume2, Timer } from 'lucide-react';
 
 // Sound notification function
 const playNotificationSound = () => {
@@ -195,16 +195,19 @@ const PomodoroTimer = () => {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Study Timer</h2>
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <Timer className="text-primary-500" size={28} />
+            Study Timer
+          </h2>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
             {completedSessions} completed session{completedSessions !== 1 ? 's' : ''} today
           </p>
         </div>
         <button
           onClick={() => setShowSettings(!showSettings)}
-          className="btn-secondary flex items-center gap-2"
+          className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/70 dark:bg-gray-800/80 shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95 text-gray-800 dark:text-gray-100 font-semibold"
         >
           <Settings size={20} />
           Settings
@@ -224,10 +227,10 @@ const PomodoroTimer = () => {
               key={type}
               onClick={() => handleSessionChange(type)}
               disabled={isRunning}
-              className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+              className={`px-4 py-2 rounded-2xl font-medium transition-all duration-200 transform hover:scale-105 active:scale-95 ${
                 sessionType === type
                   ? `${sessionColors[type]} text-white shadow-lg`
-                  : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                  : 'bg-white/70 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 shadow hover:shadow-md'
               } ${isRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {label}
@@ -284,7 +287,7 @@ const PomodoroTimer = () => {
         <div className="flex justify-center gap-4">
           <button
             onClick={handleStartPause}
-            className={`${sessionColors[sessionType]} text-white px-6 py-3 rounded-lg font-medium flex items-center gap-2 hover:opacity-90 transition-all duration-200 transform hover:scale-110 active:scale-95 shadow-lg ripple group`}
+            className={`${sessionColors[sessionType]} text-white px-6 py-3 rounded-2xl font-medium flex items-center gap-2 hover:opacity-90 transition-all duration-200 transform hover:scale-110 active:scale-95 shadow-lg hover:shadow-xl ripple group`}
           >
             {isRunning ? (
               <>
@@ -300,7 +303,7 @@ const PomodoroTimer = () => {
           </button>
           <button
             onClick={handleReset}
-            className="btn-secondary flex items-center gap-2 transform hover:scale-105 active:scale-95 transition-all duration-200"
+            className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/70 dark:bg-gray-800/80 shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95 text-gray-800 dark:text-gray-100 font-semibold"
             disabled={isRunning}
           >
             <RotateCcw size={20} />
@@ -395,7 +398,7 @@ const PomodoroTimer = () => {
               </p>
             </div>
             <div className="flex gap-3 pt-4">
-              <button onClick={handleSaveSettings} className="btn-primary flex-1 flex items-center justify-center gap-2">
+              <button onClick={handleSaveSettings} className="btn-primary flex-1 flex items-center justify-center gap-2 rounded-2xl shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95">
                 <Check size={18} />
                 Save Settings
               </button>
@@ -409,7 +412,7 @@ const PomodoroTimer = () => {
                   });
                   setShowSettings(false);
                 }}
-                className="btn-secondary"
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-white/70 dark:bg-gray-800/80 shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95 text-gray-800 dark:text-gray-100 font-semibold"
               >
                 Cancel
               </button>

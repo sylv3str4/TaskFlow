@@ -14,14 +14,13 @@ import {
   User,
   Menu,
   X,
-  LogOut,
   PawPrint,
   Star,
 } from 'lucide-react';
 
 const Sidebar = () => {
   const { activeTab, setActiveTab, gamification } = useApp();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const xpRange = gamification?.xpForNextLevel - gamification?.xpForCurrentLevel || 0;
@@ -38,11 +37,6 @@ const Sidebar = () => {
     { id: 'settings', label: 'Settings', icon: SettingsIcon },
   ];
 
-  const handleLogout = () => {
-    if (window.confirm('Are you sure you want to sign out?')) {
-      logout();
-    }
-  };
 
   return (
     <>
@@ -136,13 +130,6 @@ const Sidebar = () => {
                 </div>
               </div>
             )}
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-200 transform hover:scale-105 active:scale-95 hover:shadow-md"
-            >
-              <LogOut size={20} className="transform transition-transform hover:rotate-12" />
-              Sign Out
-            </button>
           </div>
         </div>
       </aside>

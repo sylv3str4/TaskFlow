@@ -104,6 +104,8 @@ const defaultGamification = {
   xpForCurrentLevel: 0,
   xpForNextLevel: 500,
   coins: 0,
+  pityCounter: 0,
+  inventory: {},
   pet: {
     name: 'Pixel',
     species: '🐾',

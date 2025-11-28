@@ -39,6 +39,8 @@ const ActionTypes = {
   SET_GAMIFICATION: 'SET_GAMIFICATION',
   ADD_XP: 'ADD_XP',
   UPDATE_PET: 'UPDATE_PET',
+  UPDATE_INVENTORY: 'UPDATE_INVENTORY',
+  UPDATE_PITY: 'UPDATE_PITY',
 
   // UI
   SET_ACTIVE_TAB: 'SET_ACTIVE_TAB',
@@ -61,6 +63,8 @@ const initialState = {
     xpForCurrentLevel: 0,
     xpForNextLevel: 500,
     coins: 0,
+    pityCounter: 0, // Tracks spins without rare+ pet
+    inventory: {}, // Food inventory: { foodId: quantity }
   pet: {
     name: 'Pixel',
     species: '🐾',
@@ -90,6 +94,7 @@ const getLevelStats = (xp) => {
 };
 
 const PET_SPIN_COST = 25;
+const PITY_THRESHOLD = 10; // Guarantee rare+ after 10 spins
 
 // Buff/Debuff system
 const BUFF_TYPES = ['xpBoost', 'coinBoost', 'discount', 'luckBoost'];
@@ -143,7 +148,17 @@ const PET_POOL = [
   { name: 'Ember', species: '🐲', rarity: 'Epic', color: '#ef4444', chance: 8 },
 ];
 
-const rollPetReward = () => {
+const rollPetReward = (pityCounter = 0) => {
+  // If pity threshold reached, guarantee rare+ pet
+  if (pityCounter >= PITY_THRESHOLD) {
+    const rarePets = PET_POOL.filter(pet => 
+      pet.rarity === 'Rare' || pet.rarity === 'Epic' || pet.rarity === 'Legendary'
+    );
+    const selectedPet = rarePets[Math.floor(Math.random() * rarePets.length)];
+    const { buffs, debuffs } = generatePetBuffs(selectedPet.rarity);
+    return { ...selectedPet, buffs, debuffs };
+  }
+  
   const totalChance = PET_POOL.reduce((sum, pet) => sum + pet.chance, 0);
   let roll = Math.random() * totalChance;
   for (const pet of PET_POOL) {
@@ -222,15 +237,28 @@ const appReducer = (state, action) => {
       const energyBoost = action.payload?.energyBoost || 0;
       
       // Apply pet buffs/debuffs
-      if (xpGain > 0) {
+      if (xpGain !== 0) {
         const xpBoost = (pet.buffs?.xpBoost || 0);
         const xpPenalty = (pet.debuffs?.xpPenalty || 0);
-        xpGain = Math.floor(xpGain * (1 + xpBoost / 100) * (1 - xpPenalty / 100));
+        if (xpGain > 0) {
+          // Positive gain: boost increases, penalty decreases
+          xpGain = Math.floor(xpGain * (1 + xpBoost / 100) * (1 - xpPenalty / 100));
+        } else {
+          // Negative gain (penalty): boost reduces penalty, penalty increases penalty
+          // For penalties, we reverse the effect - boost reduces penalty, penalty increases it
+          xpGain = Math.floor(xpGain * (1 - xpBoost / 100) * (1 + xpPenalty / 100));
+        }
       }
-      if (coinGain > 0) {
+      if (coinGain !== 0) {
         const coinBoost = (pet.buffs?.coinBoost || 0);
         const coinPenalty = (pet.debuffs?.coinPenalty || 0);
-        coinGain = Math.floor(coinGain * (1 + coinBoost / 100) * (1 - coinPenalty / 100));
+        if (coinGain > 0) {
+          // Positive gain: boost increases, penalty decreases
+          coinGain = Math.floor(coinGain * (1 + coinBoost / 100) * (1 - coinPenalty / 100));
+        } else {
+          // Negative gain (penalty): boost reduces penalty, penalty increases penalty
+          coinGain = Math.floor(coinGain * (1 - coinBoost / 100) * (1 + coinPenalty / 100));
+        }
       }
       
       const newXp = Math.max(0, state.gamification.xp + xpGain);
@@ -273,6 +301,24 @@ const appReducer = (state, action) => {
       saveGamification(updatedGamification, userId);
       return { ...state, gamification: updatedGamification };
     }
+
+    case ActionTypes.UPDATE_INVENTORY: {
+      const updatedGamification = {
+        ...state.gamification,
+        inventory: action.payload,
+      };
+      saveGamification(updatedGamification, userId);
+      return { ...state, gamification: updatedGamification };
+    }
+
+    case ActionTypes.UPDATE_PITY: {
+      const updatedGamification = {
+        ...state.gamification,
+        pityCounter: action.payload,
+      };
+      saveGamification(updatedGamification, userId);
+      return { ...state, gamification: updatedGamification };
+    }
     
     case ActionTypes.SET_ACTIVE_TAB:
       return { ...state, activeTab: action.payload };
@@ -307,6 +353,14 @@ export const AppProvider = ({ children }) => {
         },
       };
       saveGamification(gamification, userId);
+    }
+    
+    // Ensure inventory and pityCounter are initialized
+    if (!gamification.inventory) {
+      gamification.inventory = {};
+    }
+    if (gamification.pityCounter === undefined || gamification.pityCounter === null) {
+      gamification.pityCounter = 0;
     }
     
     dispatch({ type: ActionTypes.SET_TASKS, payload: tasks, userId });
@@ -384,18 +438,38 @@ export const AppProvider = ({ children }) => {
       });
     },
 
-    feedPet: () => {
-      if (state.gamification.coins < 5) {
-        return { success: false, message: 'Not enough coins to feed pet.' };
+    feedPet: (foodId = 'basic') => {
+      const inventory = state.gamification.inventory || {};
+      const foodQuantity = inventory[foodId] || 0;
+      
+      if (foodQuantity <= 0) {
+        return { success: false, message: 'You don\'t have any food in your inventory! Buy food from the shop first.' };
       }
+      
+      const FOOD_ITEMS = {
+        basic: { hungerReduction: 25, energyBoost: 12, mood: 'Content' },
+        premium: { hungerReduction: 50, energyBoost: 25, mood: 'Happy' },
+        treat: { hungerReduction: 15, energyBoost: 20, mood: 'Excited' },
+        super: { hungerReduction: 40, energyBoost: 35, mood: 'Ecstatic' },
+      };
+      
+      const food = FOOD_ITEMS[foodId] || FOOD_ITEMS.basic;
+      
+      // Use one food item
+      const newInventory = { ...inventory };
+      newInventory[foodId] = Math.max(0, foodQuantity - 1);
+      if (newInventory[foodId] === 0) {
+        delete newInventory[foodId];
+      }
+      
+      dispatch({ type: ActionTypes.UPDATE_INVENTORY, payload: newInventory, userId });
       dispatch({
         type: ActionTypes.UPDATE_PET,
         payload: {
-          coinsChange: -5,
           petChanges: {
-            hunger: Math.max(0, state.gamification.pet.hunger - 25),
-            energy: Math.min(100, state.gamification.pet.energy + 12),
-            mood: 'Content',
+            hunger: Math.max(0, state.gamification.pet.hunger - food.hungerReduction),
+            energy: Math.min(100, state.gamification.pet.energy + food.energyBoost),
+            mood: food.mood,
           },
         },
         userId,
@@ -413,22 +487,23 @@ export const AppProvider = ({ children }) => {
       if (state.gamification.coins < finalCost) {
         return { success: false, message: `Not enough coins! You need ${finalCost} coins.` };
       }
-      if (state.gamification.pet.hunger <= 0 && foodItem.hungerReduction > 0) {
-        return { success: false, message: `${state.gamification.pet.name} is not hungry!` };
-      }
+      
+      // Add food to inventory instead of feeding immediately
+      const inventory = state.gamification.inventory || {};
+      const currentQuantity = inventory[foodItem.id] || 0;
+      const updatedInventory = { ...inventory };
+      updatedInventory[foodItem.id] = currentQuantity + 1;
+      
       dispatch({
         type: ActionTypes.UPDATE_PET,
         payload: {
           coinsChange: -finalCost,
-          petChanges: {
-            hunger: Math.max(0, state.gamification.pet.hunger - foodItem.hungerReduction),
-            energy: Math.min(100, state.gamification.pet.energy + foodItem.energyBoost),
-            mood: foodItem.mood || 'Happy',
-          },
         },
         userId,
       });
-      return { success: true, message: `${state.gamification.pet.name} loved the ${foodItem.name}!` };
+      dispatch({ type: ActionTypes.UPDATE_INVENTORY, payload: updatedInventory, userId });
+      
+      return { success: true, message: `Added ${foodItem.name} to inventory!` };
     },
 
     playWithPet: () => {
@@ -468,26 +543,54 @@ export const AppProvider = ({ children }) => {
       if (state.gamification.coins < finalCost) {
         return { success: false, message: `You need ${finalCost} coins to spin.` };
       }
-      const reward = rollPetReward();
+      
+      const pityCounter = state.gamification.pityCounter || 0;
+      const reward = rollPetReward(pityCounter);
+      
+      // Update pity counter
+      const isRarePlus = reward.rarity === 'Rare' || reward.rarity === 'Epic' || reward.rarity === 'Legendary';
+      const newPityCounter = isRarePlus ? 0 : pityCounter + 1;
+      
+      // Deduct coins and update pity, but don't switch pet yet
       dispatch({
         type: ActionTypes.UPDATE_PET,
         payload: {
           coinsChange: -finalCost,
+        },
+        userId,
+      });
+      dispatch({ type: ActionTypes.UPDATE_PITY, payload: newPityCounter, userId });
+      
+      return { 
+        success: true, 
+        reward: {
+          ...reward,
+          mood: 'Ecstatic',
+          energy: 85,
+          hunger: 20,
+        },
+        oldPet: state.gamification.pet,
+      };
+    },
+    
+    switchToNewPet: (newPet) => {
+      dispatch({
+        type: ActionTypes.UPDATE_PET,
+        payload: {
           petChanges: {
-            name: reward.name,
-            species: reward.species,
-            rarity: reward.rarity,
-            color: reward.color,
-            buffs: reward.buffs,
-            debuffs: reward.debuffs,
-            mood: 'Ecstatic',
-            energy: 85,
-            hunger: 20,
+            name: newPet.name,
+            species: newPet.species,
+            rarity: newPet.rarity,
+            color: newPet.color,
+            buffs: newPet.buffs,
+            debuffs: newPet.debuffs,
+            mood: newPet.mood || 'Ecstatic',
+            energy: newPet.energy || 85,
+            hunger: newPet.hunger || 20,
           },
         },
         userId,
       });
-      return { success: true, reward };
     },
     
     // Helper function to get pet's effective food cost

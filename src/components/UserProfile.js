@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { User, Mail, Calendar, Edit2, Save, X } from 'lucide-react';
+import { User, Mail, Calendar, Edit2, Save, X, LogOut } from 'lucide-react';
 import { format } from 'date-fns';
 
 const UserProfile = () => {
@@ -40,15 +40,18 @@ const UserProfile = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Profile</h2>
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <User className="text-primary-500" size={28} />
+            Profile
+          </h2>
           <p className="text-gray-600 dark:text-gray-400 mt-1">Manage your account information</p>
         </div>
         {!isEditing && (
           <button
             onClick={() => setIsEditing(true)}
-            className="btn-secondary flex items-center gap-2"
+            className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/70 dark:bg-gray-800/80 shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95 text-gray-800 dark:text-gray-100 font-semibold"
           >
             <Edit2 size={18} />
             Edit Profile
@@ -119,11 +122,11 @@ const UserProfile = () => {
 
         {isEditing && (
           <div className="flex gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-            <button onClick={handleSave} className="btn-primary flex items-center gap-2">
+            <button onClick={handleSave} className="btn-primary flex items-center gap-2 rounded-2xl shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95">
               <Save size={18} />
               Save Changes
             </button>
-            <button onClick={handleCancel} className="btn-secondary flex items-center gap-2">
+            <button onClick={handleCancel} className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/70 dark:bg-gray-800/80 shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95 text-gray-800 dark:text-gray-100 font-semibold">
               <X size={18} />
               Cancel
             </button>
@@ -133,12 +136,13 @@ const UserProfile = () => {
 
       <div className="card">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Account Actions</h3>
-        <button
-          onClick={logout}
-          className="btn-secondary text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 w-full"
-        >
-          Sign Out
-        </button>
+          <button
+            onClick={logout}
+            className="flex items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-white/70 dark:bg-gray-800/80 shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 w-full font-semibold"
+          >
+            <LogOut size={18} />
+            Sign Out
+          </button>
       </div>
     </div>
   );

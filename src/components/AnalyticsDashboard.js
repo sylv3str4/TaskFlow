@@ -19,7 +19,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { Clock, CheckCircle, Target, TrendingUp } from 'lucide-react';
+import { Clock, CheckCircle, Target, TrendingUp, BarChart3 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, subDays } from 'date-fns';
 
 const AnalyticsDashboard = () => {
@@ -161,7 +161,10 @@ const AnalyticsDashboard = () => {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Analytics Dashboard</h2>
+        <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+          <BarChart3 className="text-primary-500" size={28} />
+          Analytics Dashboard
+        </h2>
         <p className="text-gray-600 dark:text-gray-400 mt-1">
           Track your study progress and productivity trends
         </p>
@@ -177,7 +180,7 @@ const AnalyticsDashboard = () => {
                 {stats.todayStudyTime} min
               </p>
             </div>
-            <div className="p-3 bg-primary-100 dark:bg-primary-900 rounded-lg group-hover:scale-110 transition-transform duration-300">
+            <div className="p-3 bg-primary-100 dark:bg-primary-900 rounded-2xl group-hover:scale-110 transition-transform duration-300">
               <Clock className="text-primary-600 dark:text-primary-400 group-hover:animate-float" size={24} />
             </div>
           </div>
@@ -191,7 +194,7 @@ const AnalyticsDashboard = () => {
                 {stats.weekStudyTime} min
               </p>
             </div>
-            <div className="p-3 bg-green-100 dark:bg-green-900 rounded-lg group-hover:scale-110 transition-transform duration-300">
+            <div className="p-3 bg-green-100 dark:bg-green-900 rounded-2xl group-hover:scale-110 transition-transform duration-300">
               <TrendingUp className="text-green-600 dark:text-green-400 group-hover:animate-float" size={24} />
             </div>
           </div>
@@ -205,7 +208,7 @@ const AnalyticsDashboard = () => {
                 {stats.completedTasks}/{stats.totalTasks}
               </p>
             </div>
-            <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-lg group-hover:scale-110 transition-transform duration-300">
+            <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-2xl group-hover:scale-110 transition-transform duration-300">
               <CheckCircle className="text-blue-600 dark:text-blue-400 group-hover:animate-float" size={24} />
             </div>
           </div>
@@ -219,7 +222,7 @@ const AnalyticsDashboard = () => {
                 {stats.completionRate.toFixed(0)}%
               </p>
             </div>
-            <div className="p-3 bg-yellow-100 dark:bg-yellow-900 rounded-lg group-hover:scale-110 transition-transform duration-300">
+            <div className="p-3 bg-yellow-100 dark:bg-yellow-900 rounded-2xl group-hover:scale-110 transition-transform duration-300">
               <Target className="text-yellow-600 dark:text-yellow-400 group-hover:animate-float" size={24} />
             </div>
           </div>

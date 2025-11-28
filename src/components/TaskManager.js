@@ -287,30 +287,33 @@ const TaskManager = () => {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Task Manager</h2>
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <CheckSquare className="text-primary-500" size={28} />
+            Task Manager
+          </h2>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
             {activeTasksCount} active task{activeTasksCount !== 1 ? 's' : ''}
             {searchQuery && ` • ${displayedTasksCount} result${displayedTasksCount !== 1 ? 's' : ''}`}
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        <div className="flex items-center gap-3">
           {gamification && (
             <div
-              className={`flex items-center gap-2 px-4 py-2 rounded-2xl bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-200 shadow transition-all duration-500 ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/70 dark:bg-gray-800/80 text-yellow-700 dark:text-yellow-200 shadow hover:shadow-lg transition-all duration-500 ${
                 coinPulse ? 'scale-105 shadow-lg' : 'scale-100'
               }`}
             >
-              <Coins size={18} className={coinPulse ? 'animate-bounce-subtle' : ''} />
-              <div className={`text-sm font-semibold tabular-nums transition-all duration-500 ${coinPulse ? 'animate-number-shuffle' : ''}`}>
+              <Coins className={`text-yellow-500 ${coinPulse ? 'animate-bounce-subtle' : ''}`} size={18} />
+              <span className={`text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums transition-all duration-500 ${coinPulse ? 'animate-number-shuffle' : ''}`}>
                 {new Intl.NumberFormat().format(gamification.coins)} Coins
-              </div>
+              </span>
             </div>
           )}
           <button
             onClick={() => handleOpenModal()}
-            className="btn-primary flex items-center gap-2 ripple group relative overflow-hidden justify-center"
+            className="btn-primary flex items-center gap-2 ripple group relative overflow-hidden justify-center rounded-2xl px-4 py-2 shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95"
           >
             <Plus size={20} className="transform group-hover:rotate-90 transition-transform duration-300" />
             Add Task
@@ -353,10 +356,10 @@ const TaskManager = () => {
                 <button
                   key={filterType}
                   onClick={() => setFilter(filterType)}
-                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+                  className={`px-4 py-2 rounded-2xl font-medium transition-all duration-200 transform hover:scale-105 active:scale-95 ${
                     filter === filterType
                       ? 'bg-primary-600 text-white shadow-lg'
-                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                      : 'bg-white/70 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 shadow hover:shadow-md'
                   }`}
                 >
                   {filterType.charAt(0).toUpperCase() + filterType.slice(1)}
@@ -552,7 +555,7 @@ const TaskManager = () => {
           onClick={handleCloseModal}
         >
           <div 
-            className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-md w-full p-6 animate-scale-in transform"
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-scale-in transform"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center mb-4">
@@ -655,7 +658,7 @@ const TaskManager = () => {
                 </div>
               </div>
               <div className="flex gap-3 pt-4">
-                <button type="submit" className="btn-primary flex-1 ripple group">
+                <button type="submit" className="btn-primary flex-1 ripple group rounded-2xl shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95">
                   <span className="flex items-center justify-center gap-2">
                     {editingTask ? (
                       <>
@@ -673,7 +676,7 @@ const TaskManager = () => {
                 <button
                   type="button"
                   onClick={handleCloseModal}
-                  className="btn-secondary ripple"
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-white/70 dark:bg-gray-800/80 shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95 text-gray-800 dark:text-gray-100 font-semibold"
                 >
                   Cancel
                 </button>

@@ -5,11 +5,19 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Trash2, AlertCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Trash2, AlertCircle, LogOut, Settings as SettingsIcon } from 'lucide-react';
 
 const Settings = () => {
   const { settings, updateSettings } = useApp();
+  const { logout } = useAuth();
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  
+  const handleLogout = () => {
+    if (window.confirm('Are you sure you want to sign out?')) {
+      logout();
+    }
+  };
 
   const handleToggleDarkMode = () => {
     updateSettings({ darkMode: !settings.darkMode });
@@ -28,7 +36,10 @@ const Settings = () => {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h2>
+        <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+          <SettingsIcon className="text-primary-500" size={28} />
+          Settings
+        </h2>
         <p className="text-gray-600 dark:text-gray-400 mt-1">
           Manage your preferences and app settings
         </p>
@@ -87,13 +98,13 @@ const Settings = () => {
                 <div className="flex gap-2">
                   <button
                     onClick={handleClearData}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-sm font-medium transition-all duration-200 transform hover:scale-105 active:scale-95 shadow hover:shadow-lg"
                   >
                     Confirm
                   </button>
                   <button
                     onClick={() => setShowClearConfirm(false)}
-                    className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 rounded-lg text-sm font-medium transition-colors"
+                    className="px-4 py-2 bg-white/70 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-2xl text-sm font-medium transition-all duration-200 transform hover:scale-105 active:scale-95 shadow hover:shadow-lg"
                   >
                     Cancel
                   </button>
@@ -102,7 +113,7 @@ const Settings = () => {
             ) : (
               <button
                 onClick={handleClearData}
-                className="btn-secondary flex items-center gap-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/70 dark:bg-gray-800/80 shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 font-semibold"
               >
                 <Trash2 size={18} />
                 Clear All Data
@@ -110,6 +121,20 @@ const Settings = () => {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Account */}
+      <div className="card">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          Account
+        </h3>
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-white/70 dark:bg-gray-800/80 shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 font-semibold"
+        >
+          <LogOut size={18} />
+          Sign Out
+        </button>
       </div>
 
       {/* About */}
