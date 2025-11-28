@@ -122,6 +122,41 @@ const AnalyticsDashboard = () => {
     ].filter((item) => item.value > 0);
   }, [tasks]);
 
+  // Task category distribution
+  const categoryData = useMemo(() => {
+    const categoryCounts = tasks.reduce((acc, task) => {
+      const category = task.category || 'other';
+      acc[category] = (acc[category] || 0) + 1;
+      return acc;
+    }, {});
+
+    const categoryLabels = {
+      study: 'Study',
+      homework: 'Homework',
+      project: 'Project',
+      exam: 'Exam',
+      reading: 'Reading',
+      other: 'Other',
+    };
+
+    const categoryColors = {
+      study: '#3b82f6',
+      homework: '#a855f7',
+      project: '#f97316',
+      exam: '#ef4444',
+      reading: '#22c55e',
+      other: '#6b7280',
+    };
+
+    return Object.entries(categoryCounts)
+      .map(([category, count]) => ({
+        name: categoryLabels[category] || 'Other',
+        value: count,
+        color: categoryColors[category] || '#6b7280',
+      }))
+      .filter((item) => item.value > 0);
+  }, [tasks]);
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
@@ -134,7 +169,7 @@ const AnalyticsDashboard = () => {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="card">
+        <div className="card transform hover:scale-105 transition-all duration-300 cursor-pointer group animate-slide-up" style={{ animationDelay: '0s' }}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Today's Study Time</p>
@@ -142,13 +177,13 @@ const AnalyticsDashboard = () => {
                 {stats.todayStudyTime} min
               </p>
             </div>
-            <div className="p-3 bg-primary-100 dark:bg-primary-900 rounded-lg">
-              <Clock className="text-primary-600 dark:text-primary-400" size={24} />
+            <div className="p-3 bg-primary-100 dark:bg-primary-900 rounded-lg group-hover:scale-110 transition-transform duration-300">
+              <Clock className="text-primary-600 dark:text-primary-400 group-hover:animate-float" size={24} />
             </div>
           </div>
         </div>
 
-        <div className="card">
+        <div className="card transform hover:scale-105 transition-all duration-300 cursor-pointer group animate-slide-up" style={{ animationDelay: '0.1s' }}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">This Week</p>
@@ -156,13 +191,13 @@ const AnalyticsDashboard = () => {
                 {stats.weekStudyTime} min
               </p>
             </div>
-            <div className="p-3 bg-green-100 dark:bg-green-900 rounded-lg">
-              <TrendingUp className="text-green-600 dark:text-green-400" size={24} />
+            <div className="p-3 bg-green-100 dark:bg-green-900 rounded-lg group-hover:scale-110 transition-transform duration-300">
+              <TrendingUp className="text-green-600 dark:text-green-400 group-hover:animate-float" size={24} />
             </div>
           </div>
         </div>
 
-        <div className="card">
+        <div className="card transform hover:scale-105 transition-all duration-300 cursor-pointer group animate-slide-up" style={{ animationDelay: '0.2s' }}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Completed Tasks</p>
@@ -170,13 +205,13 @@ const AnalyticsDashboard = () => {
                 {stats.completedTasks}/{stats.totalTasks}
               </p>
             </div>
-            <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-lg">
-              <CheckCircle className="text-blue-600 dark:text-blue-400" size={24} />
+            <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-lg group-hover:scale-110 transition-transform duration-300">
+              <CheckCircle className="text-blue-600 dark:text-blue-400 group-hover:animate-float" size={24} />
             </div>
           </div>
         </div>
 
-        <div className="card">
+        <div className="card transform hover:scale-105 transition-all duration-300 cursor-pointer group animate-slide-up" style={{ animationDelay: '0.3s' }}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Completion Rate</p>
@@ -184,8 +219,8 @@ const AnalyticsDashboard = () => {
                 {stats.completionRate.toFixed(0)}%
               </p>
             </div>
-            <div className="p-3 bg-yellow-100 dark:bg-yellow-900 rounded-lg">
-              <Target className="text-yellow-600 dark:text-yellow-400" size={24} />
+            <div className="p-3 bg-yellow-100 dark:bg-yellow-900 rounded-lg group-hover:scale-110 transition-transform duration-300">
+              <Target className="text-yellow-600 dark:text-yellow-400 group-hover:animate-float" size={24} />
             </div>
           </div>
         </div>
@@ -194,8 +229,9 @@ const AnalyticsDashboard = () => {
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Daily Study Time Chart */}
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <div className="card transform hover:scale-[1.02] transition-all duration-300 hover:shadow-xl animate-slide-in-left">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <div className="w-2 h-2 bg-primary-600 rounded-full animate-pulse"></div>
             Daily Study Time (Last 7 Days)
           </h3>
           <ResponsiveContainer width="100%" height={300}>
@@ -230,8 +266,9 @@ const AnalyticsDashboard = () => {
         </div>
 
         {/* Weekly Study Time Chart */}
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <div className="card transform hover:scale-[1.02] transition-all duration-300 hover:shadow-xl animate-slide-in-right">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></div>
             Weekly Study Time
           </h3>
           <ResponsiveContainer width="100%" height={300}>
@@ -260,8 +297,9 @@ const AnalyticsDashboard = () => {
 
         {/* Task Priority Distribution */}
         {priorityData.length > 0 && (
-          <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          <div className="card transform hover:scale-[1.02] transition-all duration-300 hover:shadow-xl animate-zoom-in">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <div className="w-2 h-2 bg-yellow-600 rounded-full animate-pulse"></div>
               Task Priority Distribution
             </h3>
             <ResponsiveContainer width="100%" height={300}>
@@ -292,9 +330,45 @@ const AnalyticsDashboard = () => {
           </div>
         )}
 
+        {/* Task Category Distribution */}
+        {categoryData.length > 0 && (
+          <div className="card transform hover:scale-[1.02] transition-all duration-300 hover:shadow-xl animate-zoom-in">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <div className="w-2 h-2 bg-purple-600 rounded-full animate-pulse"></div>
+              Task Category Distribution
+            </h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={categoryData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {categoryData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'var(--tw-color-gray-800)',
+                    border: 'none',
+                    borderRadius: '8px',
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
         {/* Task Completion Stats */}
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <div className="card transform hover:scale-[1.02] transition-all duration-300 hover:shadow-xl animate-slide-up">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
             Task Overview
           </h3>
           <div className="space-y-4">
@@ -305,11 +379,13 @@ const AnalyticsDashboard = () => {
                   {stats.completedTasks} / {stats.totalTasks}
                 </span>
               </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
                 <div
-                  className="bg-green-600 h-3 rounded-full transition-all duration-500"
+                  className="bg-green-600 h-3 rounded-full transition-all duration-1000 ease-out relative"
                   style={{ width: `${stats.completionRate}%` }}
-                />
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
+                </div>
               </div>
             </div>
             <div className="pt-4 border-t border-gray-200 dark:border-gray-700">

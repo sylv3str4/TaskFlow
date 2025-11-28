@@ -5,15 +5,41 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { Play, Pause, RotateCcw, Settings, Check } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
+import { Play, Pause, RotateCcw, Settings, Check, Volume2 } from 'lucide-react';
+
+// Sound notification function
+const playNotificationSound = () => {
+  try {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = 800;
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.5);
+  } catch (error) {
+    console.log('Audio notification not available');
+  }
+};
 
 const PomodoroTimer = () => {
   const { settings, addStudyLog, updateSettings } = useApp();
+  const { success, info } = useToast();
   const [timeLeft, setTimeLeft] = useState(settings.pomodoroWork * 60); // in seconds
   const [isRunning, setIsRunning] = useState(false);
   const [sessionType, setSessionType] = useState('work'); // work, shortBreak, longBreak
   const [completedSessions, setCompletedSessions] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [isPulsing, setIsPulsing] = useState(false);
   const [tempSettings, setTempSettings] = useState({
     pomodoroWork: settings.pomodoroWork,
     pomodoroShortBreak: settings.pomodoroShortBreak,
@@ -37,6 +63,9 @@ const PomodoroTimer = () => {
   // Handle timer completion
   const handleTimerComplete = useCallback(() => {
     setIsRunning(false);
+    playNotificationSound();
+    setIsPulsing(true);
+    setTimeout(() => setIsPulsing(false), 2000);
     
     if (sessionType === 'work') {
       const newCompletedSessions = completedSessions + 1;
@@ -49,20 +78,25 @@ const PomodoroTimer = () => {
         completedAt: new Date().toISOString(),
       });
 
+      success(`Great work! Session ${newCompletedSessions} completed! 🎉`);
+
       // Check if it's time for a long break
       if (newCompletedSessions % settings.pomodoroLongBreakInterval === 0) {
         setSessionType('longBreak');
         setTimeLeft(settings.pomodoroLongBreak * 60);
+        info('Time for a long break! ☕');
       } else {
         setSessionType('shortBreak');
         setTimeLeft(settings.pomodoroShortBreak * 60);
+        info('Take a short break! 🧘');
       }
     } else {
       // Break completed, return to work
       setSessionType('work');
       setTimeLeft(settings.pomodoroWork * 60);
+      info('Break over! Time to focus! 💪');
     }
-  }, [sessionType, completedSessions, settings, addStudyLog]);
+  }, [sessionType, completedSessions, settings, addStudyLog, success, info]);
 
   // Timer countdown logic
   useEffect(() => {
@@ -85,7 +119,27 @@ const PomodoroTimer = () => {
 
   const handleStartPause = () => {
     setIsRunning(!isRunning);
+    if (!isRunning) {
+      info('Timer started! Focus time! 🎯');
+    }
   };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (e.code === 'Space' && !e.target.matches('input, textarea')) {
+        e.preventDefault();
+        handleStartPause();
+      }
+      if (e.key === 'r' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        handleReset();
+      }
+    };
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRunning]);
 
   const handleReset = () => {
     setIsRunning(false);
@@ -112,6 +166,7 @@ const PomodoroTimer = () => {
     updateSettings(tempSettings);
     setShowSettings(false);
     handleReset();
+    success('Timer settings saved!');
   };
 
   const formatTime = (seconds) => {
@@ -168,9 +223,9 @@ const PomodoroTimer = () => {
               key={type}
               onClick={() => handleSessionChange(type)}
               disabled={isRunning}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 transform hover:scale-105 active:scale-95 ${
                 sessionType === type
-                  ? `${sessionColors[type]} text-white`
+                  ? `${sessionColors[type]} text-white shadow-lg`
                   : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
               } ${isRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
@@ -180,7 +235,7 @@ const PomodoroTimer = () => {
         </div>
 
         {/* Circular Progress */}
-        <div className="relative w-64 h-64 mx-auto mb-8">
+        <div className={`relative w-64 h-64 mx-auto mb-8 ${isPulsing ? 'animate-pulse' : ''} ${isRunning ? 'animate-float' : ''}`}>
           <svg className="transform -rotate-90 w-64 h-64">
             <circle
               cx="128"
@@ -200,17 +255,27 @@ const PomodoroTimer = () => {
               fill="none"
               strokeDasharray={`${2 * Math.PI * 120}`}
               strokeDashoffset={`${2 * Math.PI * 120 * (1 - progress / 100)}`}
-              className={`${sessionColors[sessionType]} transition-all duration-1000`}
+              className={`${sessionColors[sessionType]} transition-all duration-1000 ${isRunning ? 'animate-glow' : ''}`}
               strokeLinecap="round"
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className="text-5xl font-bold text-gray-900 dark:text-white mb-2">
+            <div className={`text-5xl font-bold text-gray-900 dark:text-white mb-2 transition-all duration-300 ${isPulsing ? 'scale-125 text-green-500 animate-bounce-subtle' : ''} ${isRunning ? 'transform hover:scale-110' : ''}`}>
               {formatTime(timeLeft)}
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400 capitalize">
+            <div className={`text-sm text-gray-600 dark:text-gray-400 capitalize transition-all duration-200 ${isRunning ? 'font-semibold' : ''}`}>
               {sessionType === 'work' ? 'Focus Time' : sessionType === 'shortBreak' ? 'Short Break' : 'Long Break'}
             </div>
+            {!isRunning && (
+              <div className="text-xs text-gray-500 dark:text-gray-500 mt-2 animate-pulse-slow">
+                Press Space to start
+              </div>
+            )}
+            {isRunning && (
+              <div className="text-xs text-green-600 dark:text-green-400 mt-2 font-medium animate-pulse">
+                ⏱️ Timer Running
+              </div>
+            )}
           </div>
         </div>
 
@@ -218,28 +283,31 @@ const PomodoroTimer = () => {
         <div className="flex justify-center gap-4">
           <button
             onClick={handleStartPause}
-            className={`${sessionColors[sessionType]} text-white px-6 py-3 rounded-lg font-medium flex items-center gap-2 hover:opacity-90 transition-opacity`}
+            className={`${sessionColors[sessionType]} text-white px-6 py-3 rounded-lg font-medium flex items-center gap-2 hover:opacity-90 transition-all duration-200 transform hover:scale-110 active:scale-95 shadow-lg ripple group`}
           >
             {isRunning ? (
               <>
-                <Pause size={20} />
+                <Pause size={20} className="transform group-hover:scale-110 transition-transform" />
                 Pause
               </>
             ) : (
               <>
-                <Play size={20} />
+                <Play size={20} className="transform group-hover:scale-110 transition-transform" />
                 Start
               </>
             )}
           </button>
           <button
             onClick={handleReset}
-            className="btn-secondary flex items-center gap-2"
+            className="btn-secondary flex items-center gap-2 transform hover:scale-105 active:scale-95 transition-all duration-200"
             disabled={isRunning}
           >
             <RotateCcw size={20} />
             Reset
           </button>
+        </div>
+        <div className="text-center mt-4 text-xs text-gray-500 dark:text-gray-400">
+          <p>Keyboard shortcuts: Space to start/pause • ⌘R to reset</p>
         </div>
       </div>
 

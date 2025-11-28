@@ -119,7 +119,7 @@ const Settings = () => {
         </h3>
         <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
           <p>
-            <strong className="text-gray-900 dark:text-white">Smart Study Dashboard</strong>
+            <strong className="text-gray-900 dark:text-white">TaskFlow</strong>
           </p>
           <p>Version 1.0.0</p>
           <p>

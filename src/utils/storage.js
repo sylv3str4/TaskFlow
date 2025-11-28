@@ -1,12 +1,17 @@
 /**
  * Local Storage Utility
  * Handles all local storage operations for tasks, study logs, and user settings
+ * Now supports user-specific data storage
  */
 
+const getStorageKey = (baseKey, userId = null) => {
+  return userId ? `${baseKey}_${userId}` : baseKey;
+};
+
 const STORAGE_KEYS = {
-  TASKS: 'smart_study_tasks',
-  STUDY_LOGS: 'smart_study_logs',
-  SETTINGS: 'smart_study_settings',
+  TASKS: 'taskflow_tasks',
+  STUDY_LOGS: 'taskflow_study_logs',
+  SETTINGS: 'taskflow_settings',
 };
 
 /**
@@ -51,25 +56,43 @@ export const removeStorage = (key) => {
 };
 
 // Task storage functions
-export const getTasks = () => getStorage(STORAGE_KEYS.TASKS, []);
-export const saveTasks = (tasks) => setStorage(STORAGE_KEYS.TASKS, tasks);
+export const getTasks = (userId = null) => {
+  const key = getStorageKey(STORAGE_KEYS.TASKS, userId);
+  return getStorage(key, []);
+};
+export const saveTasks = (tasks, userId = null) => {
+  const key = getStorageKey(STORAGE_KEYS.TASKS, userId);
+  setStorage(key, tasks);
+};
 
 // Study log storage functions
-export const getStudyLogs = () => getStorage(STORAGE_KEYS.STUDY_LOGS, []);
-export const saveStudyLogs = (logs) => setStorage(STORAGE_KEYS.STUDY_LOGS, logs);
-export const addStudyLog = (log) => {
-  const logs = getStudyLogs();
+export const getStudyLogs = (userId = null) => {
+  const key = getStorageKey(STORAGE_KEYS.STUDY_LOGS, userId);
+  return getStorage(key, []);
+};
+export const saveStudyLogs = (logs, userId = null) => {
+  const key = getStorageKey(STORAGE_KEYS.STUDY_LOGS, userId);
+  setStorage(key, logs);
+};
+export const addStudyLog = (log, userId = null) => {
+  const logs = getStudyLogs(userId);
   logs.push(log);
-  saveStudyLogs(logs);
+  saveStudyLogs(logs, userId);
 };
 
 // Settings storage functions
-export const getSettings = () => getStorage(STORAGE_KEYS.SETTINGS, {
-  darkMode: false,
-  pomodoroWork: 25,
-  pomodoroShortBreak: 5,
-  pomodoroLongBreak: 15,
-  pomodoroLongBreakInterval: 4,
-});
-export const saveSettings = (settings) => setStorage(STORAGE_KEYS.SETTINGS, settings);
+export const getSettings = (userId = null) => {
+  const key = getStorageKey(STORAGE_KEYS.SETTINGS, userId);
+  return getStorage(key, {
+    darkMode: false,
+    pomodoroWork: 25,
+    pomodoroShortBreak: 5,
+    pomodoroLongBreak: 15,
+    pomodoroLongBreakInterval: 4,
+  });
+};
+export const saveSettings = (settings, userId = null) => {
+  const key = getStorageKey(STORAGE_KEYS.SETTINGS, userId);
+  setStorage(key, settings);
+};
 

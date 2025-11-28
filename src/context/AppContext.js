@@ -4,6 +4,7 @@
  */
 
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import { useAuth } from './AuthContext';
 import {
   getTasks,
   saveTasks,
@@ -52,25 +53,27 @@ const initialState = {
 
 // Reducer function
 const appReducer = (state, action) => {
+  const userId = action.userId || null;
+  
   switch (action.type) {
     case ActionTypes.SET_TASKS:
       return { ...state, tasks: action.payload };
     
     case ActionTypes.ADD_TASK:
       const newTasks = [...state.tasks, action.payload];
-      saveTasks(newTasks);
+      saveTasks(newTasks, userId);
       return { ...state, tasks: newTasks };
     
     case ActionTypes.UPDATE_TASK:
       const updatedTasks = state.tasks.map(task =>
         task.id === action.payload.id ? { ...task, ...action.payload } : task
       );
-      saveTasks(updatedTasks);
+      saveTasks(updatedTasks, userId);
       return { ...state, tasks: updatedTasks };
     
     case ActionTypes.DELETE_TASK:
       const filteredTasks = state.tasks.filter(task => task.id !== action.payload);
-      saveTasks(filteredTasks);
+      saveTasks(filteredTasks, userId);
       return { ...state, tasks: filteredTasks };
     
     case ActionTypes.TOGGLE_TASK:
@@ -79,7 +82,7 @@ const appReducer = (state, action) => {
           ? { ...task, completed: !task.completed, completedAt: !task.completed ? new Date().toISOString() : null }
           : task
       );
-      saveTasks(toggledTasks);
+      saveTasks(toggledTasks, userId);
       return { ...state, tasks: toggledTasks };
     
     case ActionTypes.SET_STUDY_LOGS:
@@ -87,7 +90,7 @@ const appReducer = (state, action) => {
     
     case ActionTypes.ADD_STUDY_LOG:
       const newLogs = [...state.studyLogs, action.payload];
-      saveStudyLogs(newLogs);
+      saveStudyLogs(newLogs, userId);
       return { ...state, studyLogs: newLogs };
     
     case ActionTypes.SET_SETTINGS:
@@ -95,7 +98,7 @@ const appReducer = (state, action) => {
     
     case ActionTypes.UPDATE_SETTINGS:
       const updatedSettings = { ...state.settings, ...action.payload };
-      saveSettings(updatedSettings);
+      saveSettings(updatedSettings, userId);
       // Apply dark mode immediately
       if (action.payload.darkMode !== undefined) {
         document.documentElement.classList.toggle('dark', action.payload.darkMode);
@@ -112,21 +115,23 @@ const appReducer = (state, action) => {
 
 // Provider component
 export const AppProvider = ({ children }) => {
+  const { user } = useAuth();
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const userId = user?.id || null;
 
-  // Load data from localStorage on mount
+  // Load data from localStorage on mount or when user changes
   useEffect(() => {
-    const tasks = getTasks();
-    const studyLogs = getStudyLogs();
-    const settings = getSettings();
+    const tasks = getTasks(userId);
+    const studyLogs = getStudyLogs(userId);
+    const settings = getSettings(userId);
     
-    dispatch({ type: ActionTypes.SET_TASKS, payload: tasks });
-    dispatch({ type: ActionTypes.SET_STUDY_LOGS, payload: studyLogs });
-    dispatch({ type: ActionTypes.SET_SETTINGS, payload: settings });
+    dispatch({ type: ActionTypes.SET_TASKS, payload: tasks, userId });
+    dispatch({ type: ActionTypes.SET_STUDY_LOGS, payload: studyLogs, userId });
+    dispatch({ type: ActionTypes.SET_SETTINGS, payload: settings, userId });
     
     // Apply dark mode
     document.documentElement.classList.toggle('dark', settings.darkMode);
-  }, []);
+  }, [userId]);
 
   // Action creators
   const actions = {
@@ -137,19 +142,19 @@ export const AppProvider = ({ children }) => {
         createdAt: new Date().toISOString(),
         completed: false,
       };
-      dispatch({ type: ActionTypes.ADD_TASK, payload: newTask });
+      dispatch({ type: ActionTypes.ADD_TASK, payload: newTask, userId });
     },
     
     updateTask: (id, updates) => {
-      dispatch({ type: ActionTypes.UPDATE_TASK, payload: { id, ...updates } });
+      dispatch({ type: ActionTypes.UPDATE_TASK, payload: { id, ...updates }, userId });
     },
     
     deleteTask: (id) => {
-      dispatch({ type: ActionTypes.DELETE_TASK, payload: id });
+      dispatch({ type: ActionTypes.DELETE_TASK, payload: id, userId });
     },
     
     toggleTask: (id) => {
-      dispatch({ type: ActionTypes.TOGGLE_TASK, payload: id });
+      dispatch({ type: ActionTypes.TOGGLE_TASK, payload: id, userId });
     },
     
     addStudyLog: (log) => {
@@ -158,11 +163,11 @@ export const AppProvider = ({ children }) => {
         ...log,
         timestamp: new Date().toISOString(),
       };
-      dispatch({ type: ActionTypes.ADD_STUDY_LOG, payload: newLog });
+      dispatch({ type: ActionTypes.ADD_STUDY_LOG, payload: newLog, userId });
     },
     
     updateSettings: (updates) => {
-      dispatch({ type: ActionTypes.UPDATE_SETTINGS, payload: updates });
+      dispatch({ type: ActionTypes.UPDATE_SETTINGS, payload: updates, userId });
     },
     
     setActiveTab: (tab) => {

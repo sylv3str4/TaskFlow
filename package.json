@@ -1,7 +1,7 @@
 {
-  "name": "smart-study-dashboard",
+  "name": "taskflow",
   "version": "1.0.0",
-  "description": "A comprehensive study dashboard for planning, tracking, and optimizing study sessions",
+  "description": "TaskFlow - A comprehensive study dashboard for planning, tracking, and optimizing study sessions",
   "private": true,
   "dependencies": {
     "react": "^18.2.0",
