@@ -69,6 +69,8 @@ const initialState = {
     mood: 'Happy',
     energy: 70,
     hunger: 30,
+    buffs: { xpBoost: 10, coinBoost: 5 },
+    debuffs: { xpPenalty: 5 },
   },
     lastRewardReason: null,
   },
@@ -89,6 +91,48 @@ const getLevelStats = (xp) => {
 
 const PET_SPIN_COST = 25;
 
+// Buff/Debuff system
+const BUFF_TYPES = ['xpBoost', 'coinBoost', 'discount', 'luckBoost'];
+const DEBUFF_TYPES = ['xpPenalty', 'coinPenalty', 'priceIncrease', 'luckPenalty'];
+
+const getRarityConfig = (rarity) => {
+  const configs = {
+    Common: { buffCount: [1, 2], debuffCount: [1, 2], buffRange: [5, 15], debuffRange: [5, 15] },
+    Rare: { buffCount: [2, 3], debuffCount: [0, 1], buffRange: [10, 25], debuffRange: [5, 10] },
+    Epic: { buffCount: [3, 4], debuffCount: [0, 1], buffRange: [15, 35], debuffRange: [0, 5] },
+    Legendary: { buffCount: [4, 4], debuffCount: [0, 0], buffRange: [25, 50], debuffRange: [0, 0] },
+  };
+  return configs[rarity] || configs.Common;
+};
+
+const generatePetBuffs = (rarity) => {
+  const config = getRarityConfig(rarity);
+  const buffs = {};
+  const debuffs = {};
+  
+  // Generate buffs
+  const buffCount = Math.floor(Math.random() * (config.buffCount[1] - config.buffCount[0] + 1)) + config.buffCount[0];
+  const availableBuffs = [...BUFF_TYPES];
+  
+  for (let i = 0; i < buffCount && availableBuffs.length > 0; i++) {
+    const buffType = availableBuffs.splice(Math.floor(Math.random() * availableBuffs.length), 1)[0];
+    const value = Math.floor(Math.random() * (config.buffRange[1] - config.buffRange[0] + 1)) + config.buffRange[0];
+    buffs[buffType] = value;
+  }
+  
+  // Generate debuffs
+  const debuffCount = Math.floor(Math.random() * (config.debuffCount[1] - config.debuffCount[0] + 1)) + config.debuffCount[0];
+  const availableDebuffs = [...DEBUFF_TYPES];
+  
+  for (let i = 0; i < debuffCount && availableDebuffs.length > 0; i++) {
+    const debuffType = availableDebuffs.splice(Math.floor(Math.random() * availableDebuffs.length), 1)[0];
+    const value = Math.floor(Math.random() * (config.debuffRange[1] - config.debuffRange[0] + 1)) + config.debuffRange[0];
+    debuffs[debuffType] = value;
+  }
+  
+  return { buffs, debuffs };
+};
+
 const PET_POOL = [
   { name: 'Pixel', species: '🐾', rarity: 'Common', color: '#0ea5e9', chance: 30 },
   { name: 'Blossom', species: '🦊', rarity: 'Rare', color: '#f97316', chance: 20 },
@@ -104,11 +148,14 @@ const rollPetReward = () => {
   let roll = Math.random() * totalChance;
   for (const pet of PET_POOL) {
     if (roll < pet.chance) {
-      return pet;
+      const { buffs, debuffs } = generatePetBuffs(pet.rarity);
+      return { ...pet, buffs, debuffs };
     }
     roll -= pet.chance;
   }
-  return PET_POOL[0];
+  const defaultPet = PET_POOL[0];
+  const { buffs, debuffs } = generatePetBuffs(defaultPet.rarity);
+  return { ...defaultPet, buffs, debuffs };
 };
 
 // Reducer function
@@ -169,10 +216,24 @@ const appReducer = (state, action) => {
       return { ...state, gamification: action.payload };
 
     case ActionTypes.ADD_XP: {
-      const xpGain = action.payload?.xp || 0;
-      const coinGain = action.payload?.coins || 0;
+      const pet = state.gamification.pet;
+      let xpGain = action.payload?.xp || 0;
+      let coinGain = action.payload?.coins || 0;
       const energyBoost = action.payload?.energyBoost || 0;
-      const newXp = state.gamification.xp + xpGain;
+      
+      // Apply pet buffs/debuffs
+      if (xpGain > 0) {
+        const xpBoost = (pet.buffs?.xpBoost || 0);
+        const xpPenalty = (pet.debuffs?.xpPenalty || 0);
+        xpGain = Math.floor(xpGain * (1 + xpBoost / 100) * (1 - xpPenalty / 100));
+      }
+      if (coinGain > 0) {
+        const coinBoost = (pet.buffs?.coinBoost || 0);
+        const coinPenalty = (pet.debuffs?.coinPenalty || 0);
+        coinGain = Math.floor(coinGain * (1 + coinBoost / 100) * (1 - coinPenalty / 100));
+      }
+      
+      const newXp = Math.max(0, state.gamification.xp + xpGain);
       const newCoins = Math.max(0, state.gamification.coins + coinGain);
       const { level, currentLevelXp, nextLevelXp } = getLevelStats(newXp);
       const updatedPet = {
@@ -232,7 +293,21 @@ export const AppProvider = ({ children }) => {
     const tasks = getTasks(userId);
     const studyLogs = getStudyLogs(userId);
     const settings = getSettings(userId);
-    const gamification = getGamification(userId);
+    let gamification = getGamification(userId);
+    
+    // Ensure pet has buffs/debuffs (for existing pets that don't have them)
+    if (gamification.pet && (!gamification.pet.buffs || !gamification.pet.debuffs)) {
+      const { buffs, debuffs } = generatePetBuffs(gamification.pet.rarity || 'Common');
+      gamification = {
+        ...gamification,
+        pet: {
+          ...gamification.pet,
+          buffs: gamification.pet.buffs || buffs,
+          debuffs: gamification.pet.debuffs || debuffs,
+        },
+      };
+      saveGamification(gamification, userId);
+    }
     
     dispatch({ type: ActionTypes.SET_TASKS, payload: tasks, userId });
     dispatch({ type: ActionTypes.SET_STUDY_LOGS, payload: studyLogs, userId });
@@ -266,11 +341,19 @@ export const AppProvider = ({ children }) => {
     toggleTask: (id) => {
       const task = state.tasks.find((t) => t.id === id);
       const willComplete = task && !task.completed;
+      const willUncomplete = task && task.completed;
       dispatch({ type: ActionTypes.TOGGLE_TASK, payload: id, userId });
       if (willComplete) {
         dispatch({
           type: ActionTypes.ADD_XP,
           payload: { xp: 60, coins: 12, energyBoost: 5, reason: 'Task completed' },
+          userId,
+        });
+      } else if (willUncomplete) {
+        // Deduct XP and coins when unchecking a task
+        dispatch({
+          type: ActionTypes.ADD_XP,
+          payload: { xp: -60, coins: -12, energyBoost: 0, reason: 'Task uncompleted' },
           userId,
         });
       }
@@ -320,6 +403,34 @@ export const AppProvider = ({ children }) => {
       return { success: true, message: `${state.gamification.pet.name} enjoyed the treat!` };
     },
 
+    buyFood: (foodItem) => {
+      const pet = state.gamification.pet;
+      // Apply discount buff
+      const discount = pet.buffs?.discount || 0;
+      const priceIncrease = pet.debuffs?.priceIncrease || 0;
+      const finalCost = Math.max(1, Math.floor(foodItem.cost * (1 - discount / 100) * (1 + priceIncrease / 100)));
+      
+      if (state.gamification.coins < finalCost) {
+        return { success: false, message: `Not enough coins! You need ${finalCost} coins.` };
+      }
+      if (state.gamification.pet.hunger <= 0 && foodItem.hungerReduction > 0) {
+        return { success: false, message: `${state.gamification.pet.name} is not hungry!` };
+      }
+      dispatch({
+        type: ActionTypes.UPDATE_PET,
+        payload: {
+          coinsChange: -finalCost,
+          petChanges: {
+            hunger: Math.max(0, state.gamification.pet.hunger - foodItem.hungerReduction),
+            energy: Math.min(100, state.gamification.pet.energy + foodItem.energyBoost),
+            mood: foodItem.mood || 'Happy',
+          },
+        },
+        userId,
+      });
+      return { success: true, message: `${state.gamification.pet.name} loved the ${foodItem.name}!` };
+    },
+
     playWithPet: () => {
       dispatch({
         type: ActionTypes.UPDATE_PET,
@@ -348,19 +459,27 @@ export const AppProvider = ({ children }) => {
     },
 
     spinForPet: () => {
-      if (state.gamification.coins < PET_SPIN_COST) {
-        return { success: false, message: `You need ${PET_SPIN_COST} coins to spin.` };
+      const pet = state.gamification.pet;
+      // Apply luck buff/debuff to spin cost (luck affects chance, but we can also affect cost)
+      const luckBoost = pet.buffs?.luckBoost || 0;
+      const luckPenalty = pet.debuffs?.luckPenalty || 0;
+      const finalCost = Math.max(1, Math.floor(PET_SPIN_COST * (1 - luckBoost / 100) * (1 + luckPenalty / 100)));
+      
+      if (state.gamification.coins < finalCost) {
+        return { success: false, message: `You need ${finalCost} coins to spin.` };
       }
       const reward = rollPetReward();
       dispatch({
         type: ActionTypes.UPDATE_PET,
         payload: {
-          coinsChange: -PET_SPIN_COST,
+          coinsChange: -finalCost,
           petChanges: {
             name: reward.name,
             species: reward.species,
             rarity: reward.rarity,
             color: reward.color,
+            buffs: reward.buffs,
+            debuffs: reward.debuffs,
             mood: 'Ecstatic',
             energy: 85,
             hunger: 20,
@@ -369,6 +488,22 @@ export const AppProvider = ({ children }) => {
         userId,
       });
       return { success: true, reward };
+    },
+    
+    // Helper function to get pet's effective food cost
+    getFoodCost: (baseCost) => {
+      const pet = state.gamification.pet;
+      const discount = pet.buffs?.discount || 0;
+      const priceIncrease = pet.debuffs?.priceIncrease || 0;
+      return Math.max(1, Math.floor(baseCost * (1 - discount / 100) * (1 + priceIncrease / 100)));
+    },
+    
+    // Helper function to get pet's effective spin cost
+    getSpinCost: () => {
+      const pet = state.gamification.pet;
+      const luckBoost = pet.buffs?.luckBoost || 0;
+      const luckPenalty = pet.debuffs?.luckPenalty || 0;
+      return Math.max(1, Math.floor(PET_SPIN_COST * (1 - luckBoost / 100) * (1 + luckPenalty / 100)));
     },
   };
 

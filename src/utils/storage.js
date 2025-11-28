@@ -112,6 +112,8 @@ const defaultGamification = {
     mood: 'Happy',
     energy: 70,
     hunger: 30,
+    buffs: { xpBoost: 10, coinBoost: 5 },
+    debuffs: { xpPenalty: 5 },
   },
   lastRewardReason: null,
 };

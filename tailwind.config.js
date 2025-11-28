@@ -42,6 +42,7 @@ module.exports = {
         'slide-in-left': 'slideInLeft 0.5s ease-out',
         'zoom-in': 'zoomIn 0.3s ease-out',
         'shrink': 'shrink 0.3s ease-out',
+        'number-shuffle': 'numberShuffle 0.6s ease',
       },
       keyframes: {
         fadeIn: {
@@ -111,6 +112,12 @@ module.exports = {
         shrink: {
           '0%': { transform: 'scale(1)' },
           '100%': { transform: 'scale(0.95)' },
+        },
+        numberShuffle: {
+          '0%': { transform: 'translateY(0)', opacity: '1' },
+          '40%': { transform: 'translateY(-30%)', opacity: '0.6' },
+          '70%': { transform: 'translateY(15%)', opacity: '0.9' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
         },
       },
     },

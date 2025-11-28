@@ -303,8 +303,8 @@ const TaskManager = () => {
               }`}
             >
               <Coins size={18} className={coinPulse ? 'animate-bounce-subtle' : ''} />
-              <div className="text-sm font-semibold">
-                {gamification.coins} Coins
+              <div className={`text-sm font-semibold tabular-nums transition-all duration-500 ${coinPulse ? 'animate-number-shuffle' : ''}`}>
+                {new Intl.NumberFormat().format(gamification.coins)} Coins
               </div>
             </div>
           )}
@@ -470,7 +470,7 @@ const TaskManager = () => {
                       : 'border-gray-300 dark:border-gray-600 hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20'
                   }`}
                 >
-                  {task.completed && <Check size={16} className="text-white animate-bounce" />}
+                  {task.completed && <Check size={16} className="text-white" />}
                   {completedTaskId === task.id && (
                     <Sparkles size={16} className="text-white animate-spin" />
                   )}
