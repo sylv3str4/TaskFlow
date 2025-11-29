@@ -43,6 +43,8 @@ module.exports = {
         'zoom-in': 'zoomIn 0.3s ease-out',
         'shrink': 'shrink 0.3s ease-out',
         'number-shuffle': 'numberShuffle 0.6s ease',
+        'fade-in-up': 'fadeInUp 0.6s ease-out',
+        'fade-in-down': 'fadeInDown 0.5s ease-out',
       },
       keyframes: {
         fadeIn: {

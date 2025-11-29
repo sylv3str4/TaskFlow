@@ -47,15 +47,15 @@ const Toast = ({ message, type = 'info', onClose, duration = 3000 }) => {
   return (
     <div className="animate-slide-up">
       <div
-        className={`${colors[type]} text-white rounded-lg shadow-lg p-4 min-w-[300px] max-w-md flex items-center gap-3 transform transition-all duration-300 hover:scale-105 ${
+        className={`${colors[type]} text-white rounded-xl shadow-2xl p-4 min-w-[300px] max-w-md flex items-center gap-3 transform transition-all duration-500 ease-out hover:scale-105 hover:-translate-y-1 hover:shadow-3xl ${
           isClosing ? 'opacity-0 translate-y-2 scale-95' : 'opacity-100 translate-y-0 scale-100'
         }`}
       >
-        <Icon size={20} className="flex-shrink-0" />
+        <Icon size={20} className="flex-shrink-0 animate-bounce-subtle" />
         <p className="flex-1 font-medium">{message}</p>
         <button
           onClick={handleClose}
-          className="flex-shrink-0 hover:bg-white/20 rounded p-1 transition-colors"
+          className="flex-shrink-0 hover:bg-white/20 rounded-lg p-1 transition-all duration-200 hover:scale-110 active:scale-95"
           aria-label="Close"
         >
           <X size={16} />

@@ -37,7 +37,7 @@ const Settings = () => {
       {/* Header */}
       <div>
         <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-          <SettingsIcon className="text-primary-500" size={28} />
+          <SettingsIcon className="icon-theme" size={28} />
           Settings
         </h2>
         <p className="text-gray-600 dark:text-gray-400 mt-1">
@@ -50,7 +50,7 @@ const Settings = () => {
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
           Appearance
         </h3>
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="font-medium text-gray-900 dark:text-white">Dark Mode</p>
@@ -70,6 +70,44 @@ const Settings = () => {
                 }`}
               />
             </button>
+          </div>
+          
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">Box Transparency</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Adjust the transparency of theme gradients on boxes (0 = invisible, 1 = fully opaque)
+                </p>
+              </div>
+              <div className="text-right">
+                <span className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {Math.round((settings.boxTransparency || 0.08) * 100)}%
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <input
+                type="range"
+                min="0"
+                max="0.5"
+                step="0.01"
+                value={settings.boxTransparency !== undefined ? settings.boxTransparency : 0.08}
+                onChange={(e) => {
+                  const value = parseFloat(e.target.value);
+                  updateSettings({ boxTransparency: value });
+                }}
+                className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
+              />
+              <div className="w-20 text-sm text-gray-500 dark:text-gray-400 text-center">
+                {(settings.boxTransparency || 0.08).toFixed(2)}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <span>Subtle</span>
+              <div className="flex-1 h-1 bg-gradient-to-r from-gray-300 to-gray-500 rounded"></div>
+              <span>Vibrant</span>
+            </div>
           </div>
         </div>
       </div>

@@ -6,8 +6,9 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
-import { Plus, Edit2, Trash2, Check, Calendar, Flag, X, Sparkles, Folder, Search, CheckSquare, Coins } from 'lucide-react';
-import { format, isPast, isToday, isTomorrow } from 'date-fns';
+import { getThemeColors } from '../utils/theme';
+import { Plus, Edit2, Trash2, Check, Calendar, Flag, X, Sparkles, Folder, Search, CheckSquare, Coins, List, CalendarDays, Clock, Grid } from 'lucide-react';
+import { format, isPast, isToday, isTomorrow, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, addDays, getDay, startOfDay, addWeeks, subWeeks } from 'date-fns';
 
 const PRIORITY_COLORS = {
   low: 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200',
@@ -38,6 +39,8 @@ const TaskManager = () => {
     gamification,
   } = useApp();
   const { success, error, info } = useToast();
+  const currentTheme = gamification?.currentTheme || 'default';
+  const themeColors = getThemeColors(currentTheme);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [completedTaskId, setCompletedTaskId] = useState(null);
@@ -50,6 +53,10 @@ const TaskManager = () => {
     category: 'study',
   });
 
+  // View mode
+  const [viewMode, setViewMode] = useState('list'); // list, daily, weekly, timetable
+  const [currentWeek, setCurrentWeek] = useState(new Date()); // For weekly/timetable view
+  
   // Filter tasks
   const [filter, setFilter] = useState('all'); // all, active, completed
   const [categoryFilter, setCategoryFilter] = useState('all'); // all or specific category
@@ -281,6 +288,59 @@ const TaskManager = () => {
     };
   };
 
+  // Helper functions for views
+  const getTasksForDay = (date) => {
+    return filteredTasks.filter(task => {
+      if (!task.deadline) return false;
+      const taskDate = parseISO(task.deadline);
+      return isSameDay(taskDate, date);
+    });
+  };
+
+  const getTasksForWeek = () => {
+    const weekStart = startOfWeek(currentWeek, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(currentWeek, { weekStartsOn: 1 });
+    const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
+    
+    return weekDays.map(day => ({
+      date: day,
+      tasks: getTasksForDay(day),
+    }));
+  };
+
+  const getTasksForTimetable = () => {
+    const weekStart = startOfWeek(currentWeek, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(currentWeek, { weekStartsOn: 1 });
+    const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
+    
+    // Time slots from 6 AM to 11 PM
+    const timeSlots = [];
+    for (let hour = 6; hour <= 23; hour++) {
+      timeSlots.push(hour);
+    }
+    
+    return weekDays.map(day => {
+      const dayTasks = getTasksForDay(day);
+      const tasksByHour = {};
+      
+      dayTasks.forEach(task => {
+        if (task.deadline) {
+          const taskDate = parseISO(task.deadline);
+          const hour = taskDate.getHours();
+          if (!tasksByHour[hour]) {
+            tasksByHour[hour] = [];
+          }
+          tasksByHour[hour].push(task);
+        }
+      });
+      
+      return {
+        date: day,
+        tasksByHour,
+      };
+    });
+  };
+
   const activeTasksCount = tasks.filter(t => !t.completed).length;
   const displayedTasksCount = sortedTasks.length;
 
@@ -290,7 +350,7 @@ const TaskManager = () => {
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <CheckSquare className="text-primary-500" size={28} />
+            <CheckSquare className="icon-theme" size={28} />
             Task Manager
           </h2>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
@@ -301,41 +361,101 @@ const TaskManager = () => {
         <div className="flex items-center gap-3">
           {gamification && (
             <div
-              className={`flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/70 dark:bg-gray-800/80 text-yellow-700 dark:text-yellow-200 shadow hover:shadow-lg transition-all duration-500 ${
-                coinPulse ? 'scale-105 shadow-lg' : 'scale-100'
+              className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/20 dark:to-amber-900/20 border border-yellow-200/50 dark:border-yellow-800/50 backdrop-blur-sm shadow-md hover:shadow-lg transition-all duration-300 ${
+                coinPulse ? 'scale-105 shadow-xl' : 'scale-100'
               }`}
             >
-              <Coins className={`text-yellow-500 ${coinPulse ? 'animate-bounce-subtle' : ''}`} size={18} />
-              <span className={`text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums transition-all duration-500 ${coinPulse ? 'animate-number-shuffle' : ''}`}>
+              <Coins className={`text-yellow-600 dark:text-yellow-400 ${coinPulse ? 'animate-bounce-subtle' : ''}`} size={20} />
+              <span className={`text-sm font-bold text-yellow-700 dark:text-yellow-300 tabular-nums transition-all duration-500 ${coinPulse ? 'animate-number-shuffle' : ''}`}>
                 {new Intl.NumberFormat().format(gamification.coins)} Coins
               </span>
             </div>
           )}
           <button
             onClick={() => handleOpenModal()}
-            className="btn-primary flex items-center gap-2 ripple group relative overflow-hidden justify-center rounded-2xl px-4 py-2 shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95"
+            className="btn-primary flex items-center gap-2 ripple group relative overflow-hidden"
           >
             <Plus size={20} className="transform group-hover:rotate-90 transition-transform duration-300" />
-            Add Task
-            <span className="hidden sm:inline text-xs opacity-75 ml-2">(⌘K)</span>
+            <span>Add Task</span>
+            <span className="hidden sm:inline text-xs opacity-80 ml-1">(⌘K)</span>
           </button>
+        </div>
+      </div>
+
+      {/* View Switcher */}
+      <div className="card-compact">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">View:</span>
+            <div className="flex gap-2">
+              {[
+                { id: 'list', label: 'List', icon: List },
+                { id: 'daily', label: 'Daily', icon: Calendar },
+                { id: 'weekly', label: 'Weekly', icon: CalendarDays },
+                { id: 'timetable', label: 'Timetable', icon: Grid },
+              ].map((view) => {
+                const Icon = view.icon;
+                return (
+                  <button
+                    key={view.id}
+                    onClick={() => setViewMode(view.id)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-2xl font-medium transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+                      viewMode === view.id
+                        ? 'btn-theme-gradient text-white shadow-lg'
+                        : 'bg-white/70 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 shadow hover:shadow-md'
+                    }`}
+                  >
+                    <Icon size={18} />
+                    {view.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          
+          {/* Week Navigation for Weekly/Timetable */}
+          {(viewMode === 'weekly' || viewMode === 'timetable') && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentWeek(subWeeks(currentWeek, 1))}
+                className="p-2 rounded-lg bg-white/70 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all duration-200 transform hover:scale-105"
+              >
+                <X size={18} className="rotate-90" />
+              </button>
+              <button
+                onClick={() => setCurrentWeek(new Date())}
+                className="px-4 py-2 rounded-lg bg-white/70 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all duration-200 font-medium text-sm"
+              >
+                Today
+              </button>
+              <button
+                onClick={() => setCurrentWeek(addWeeks(currentWeek, 1))}
+                className="p-2 rounded-lg bg-white/70 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all duration-200 transform hover:scale-105"
+              >
+                <X size={18} className="-rotate-90" />
+              </button>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300 ml-2">
+                {format(startOfWeek(currentWeek, { weekStartsOn: 1 }), 'MMM dd')} - {format(endOfWeek(currentWeek, { weekStartsOn: 1 }), 'MMM dd, yyyy')}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Search Bar */}
       <div className="relative group">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 group-focus-within:text-primary-600 dark:group-focus-within:text-primary-400 transition-colors duration-200" size={20} />
+        <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 group-focus-within:icon-theme transition-colors duration-300" size={20} />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="input-field pl-10 pr-10"
+          className="input-field pl-12 pr-12"
           placeholder="Search tasks by title or description..."
         />
         {searchQuery && (
           <button
             onClick={() => setSearchQuery('')}
-            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-200 hover:scale-110 active:scale-95"
+            className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-300 hover:scale-110 active:scale-95 rounded-lg p-1 hover:bg-gray-100 dark:hover:bg-gray-700"
             aria-label="Clear search"
           >
             <X size={18} />
@@ -343,72 +463,75 @@ const TaskManager = () => {
         )}
       </div>
 
-      {/* Filters and Sort */}
-      <div className="card p-4">
-        <div className="flex flex-col lg:flex-row gap-4">
-          {/* Status Filter */}
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Status
-            </label>
-            <div className="flex gap-2 flex-wrap">
-              {['all', 'active', 'completed'].map((filterType) => (
-                <button
-                  key={filterType}
-                  onClick={() => setFilter(filterType)}
-                  className={`px-4 py-2 rounded-2xl font-medium transition-all duration-200 transform hover:scale-105 active:scale-95 ${
-                    filter === filterType
-                      ? 'bg-primary-600 text-white shadow-lg'
-                      : 'bg-white/70 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 shadow hover:shadow-md'
-                  }`}
-                >
-                  {filterType.charAt(0).toUpperCase() + filterType.slice(1)}
-                </button>
-              ))}
+      {/* Filters and Sort - Only show in list view */}
+      {viewMode === 'list' && (
+        <div className="card-compact">
+          <div className="flex flex-col lg:flex-row gap-4">
+            {/* Status Filter */}
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Status
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {['all', 'active', 'completed'].map((filterType) => (
+                  <button
+                    key={filterType}
+                    onClick={() => setFilter(filterType)}
+                    className={`px-4 py-2 rounded-2xl font-medium transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+                      filter === filterType
+                        ? 'btn-theme-gradient text-white shadow-lg'
+                        : 'bg-white/70 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 shadow hover:shadow-md'
+                    }`}
+                  >
+                    {filterType.charAt(0).toUpperCase() + filterType.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Category Filter */}
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Category
+              </label>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="input-field w-full"
+              >
+                <option value="all">All Categories</option>
+                {CATEGORIES.map((category) => (
+                  <option key={category.value} value={category.value}>
+                    {category.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Sort By */}
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Sort By
+              </label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="input-field w-full"
+              >
+                <option value="priority">Priority</option>
+                <option value="deadline">Deadline</option>
+                <option value="title">Title (A-Z)</option>
+                <option value="category">Category</option>
+                <option value="dateCreated">Date Created</option>
+              </select>
             </div>
           </div>
-
-          {/* Category Filter */}
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Category
-            </label>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="input-field w-full"
-            >
-              <option value="all">All Categories</option>
-              {CATEGORIES.map((category) => (
-                <option key={category.value} value={category.value}>
-                  {category.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Sort By */}
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Sort By
-            </label>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="input-field w-full"
-            >
-              <option value="priority">Priority</option>
-              <option value="deadline">Deadline</option>
-              <option value="title">Title (A-Z)</option>
-              <option value="category">Category</option>
-              <option value="dateCreated">Date Created</option>
-            </select>
-          </div>
         </div>
-      </div>
+      )}
 
       {/* Task List */}
-      <div className="space-y-3">
+      {viewMode === 'list' && (
+        <div className="space-y-3">
         {sortedTasks.length === 0 ? (
           <div className="card text-center py-12">
             <div className="flex flex-col items-center gap-3">
@@ -460,17 +583,17 @@ const TaskManager = () => {
               <div
                 key={task.id}
                 style={{ animationDelay: `${index * 0.05}s` }}
-                className={`card flex items-start gap-4 transform transition-all duration-300 hover:scale-[1.02] hover:shadow-xl animate-slide-up ${
-                  task.completed ? 'opacity-60' : ''
-                } ${completedTaskId === task.id ? 'ring-4 ring-green-400 animate-pulse' : ''}`}
+                className={`card flex items-start gap-4 transform transition-all duration-500 ease-out hover:scale-[1.02] hover:shadow-2xl hover:-translate-y-1 stagger-item ${
+                  task.completed ? 'opacity-70' : ''
+                } ${completedTaskId === task.id ? 'ring-4 ring-green-400/50 animate-pulse-glow' : ''}`}
               >
                 {/* Checkbox */}
                 <button
                   onClick={() => handleToggleTask(task.id)}
                   className={`mt-1 w-6 h-6 rounded border-2 flex items-center justify-center transition-all duration-200 transform hover:scale-110 ${
                     task.completed
-                      ? 'bg-primary-600 border-primary-600 shadow-lg'
-                      : 'border-gray-300 dark:border-gray-600 hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20'
+                      ? 'btn-theme-gradient border-theme shadow-lg'
+                      : 'border-gray-300 dark:border-gray-600 hover:border-theme'
                   }`}
                 >
                   {task.completed && <Check size={16} className="text-white" />}
@@ -528,7 +651,7 @@ const TaskManager = () => {
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleOpenModal(task)}
-                      className="p-2 text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-all duration-200 transform hover:scale-110"
+                      className="p-2 text-gray-600 dark:text-gray-400 hover:text-theme rounded-lg transition-all duration-200 transform hover:scale-110"
                       aria-label="Edit task"
                     >
                       <Edit2 size={18} />
@@ -547,6 +670,216 @@ const TaskManager = () => {
           })
         )}
       </div>
+      )}
+
+      {/* Daily View */}
+      {viewMode === 'daily' && (
+        <div className="space-y-4">
+          <div className="card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                {format(new Date(), 'EEEE, MMMM dd, yyyy')}
+              </h3>
+            </div>
+            {(() => {
+              const todayTasks = getTasksForDay(new Date());
+              const sortedTodayTasks = [...todayTasks].sort((a, b) => {
+                if (!a.deadline) return 1;
+                if (!b.deadline) return -1;
+                return new Date(a.deadline) - new Date(b.deadline);
+              });
+              
+              if (sortedTodayTasks.length === 0) {
+                return (
+                  <div className="text-center py-8">
+                    <Calendar className="text-gray-400 mx-auto mb-2" size={32} />
+                    <p className="text-gray-500 dark:text-gray-400">No tasks scheduled for today</p>
+                  </div>
+                );
+              }
+              
+              return (
+                <div className="space-y-3">
+                  {sortedTodayTasks.map((task, index) => {
+                    const deadlineInfo = getDeadlineLabel(task.deadline);
+                    return (
+                      <div
+                        key={task.id}
+                        style={{ animationDelay: `${index * 0.05}s` }}
+                        className={`card flex items-start gap-4 transform transition-all duration-500 ease-out hover:scale-[1.02] hover:shadow-xl hover:-translate-y-1 animate-slide-up ${
+                          task.completed ? 'opacity-60' : ''
+                        }`}
+                      >
+                        <button
+                          onClick={() => handleToggleTask(task.id)}
+                          className={`mt-1 w-6 h-6 rounded border-2 flex items-center justify-center transition-all duration-200 ${
+                            task.completed
+                              ? 'btn-theme-gradient border-theme'
+                              : 'border-gray-300 dark:border-gray-600 hover:border-theme'
+                          }`}
+                        >
+                          {task.completed && <Check size={16} className="text-white" />}
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className={`font-semibold text-lg ${task.completed ? 'line-through text-gray-500' : 'text-gray-900 dark:text-white'}`}>
+                              {task.title}
+                            </h3>
+                            {deadlineInfo && (
+                              <span className={`text-sm font-medium ${deadlineInfo.color}`}>
+                                {format(parseISO(task.deadline), 'h:mm a')}
+                              </span>
+                            )}
+                          </div>
+                          {task.description && (
+                            <p className="text-gray-600 dark:text-gray-400 text-sm">{task.description}</p>
+                          )}
+                          <div className="flex flex-wrap items-center gap-2 mt-2">
+                            {task.category && (
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${CATEGORY_COLORS[task.category]}`}>
+                                {CATEGORIES.find(c => c.value === task.category)?.label}
+                              </span>
+                            )}
+                            {task.priority && (
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${PRIORITY_COLORS[task.priority]}`}>
+                                {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {!task.completed && (
+                          <div className="flex gap-2">
+                            <button onClick={() => handleOpenModal(task)} className="p-2 text-gray-600 dark:text-gray-400 hover:text-theme rounded-lg">
+                              <Edit2 size={18} />
+                            </button>
+                            <button onClick={() => handleDeleteTask(task.id)} className="p-2 text-gray-600 dark:text-gray-400 hover:text-red-600 rounded-lg">
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Weekly View */}
+      {viewMode === 'weekly' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
+            {getTasksForWeek().map((dayData, index) => {
+              const isToday = isSameDay(dayData.date, new Date());
+              return (
+                <div key={index} className={`card ${isToday ? 'ring-2 ring-primary-500' : ''}`}>
+                  <div 
+                    className={`p-3 border-b ${isToday ? '' : 'bg-gray-50 dark:bg-gray-800/50'}`}
+                    style={isToday ? { backgroundColor: 'var(--theme-icon-color, rgba(14, 165, 233, 0.1))' } : {}}
+                  >
+                    <div className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                      {format(dayData.date, 'EEE')}
+                    </div>
+                    <div className={`text-lg font-bold ${isToday ? 'text-theme' : 'text-gray-900 dark:text-white'}`}>
+                      {format(dayData.date, 'd')}
+                    </div>
+                  </div>
+                  <div className="p-3 space-y-2 max-h-96 overflow-y-auto">
+                    {dayData.tasks.length === 0 ? (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">No tasks</p>
+                    ) : (
+                      dayData.tasks.map((task) => (
+                        <div
+                          key={task.id}
+                          onClick={() => handleOpenModal(task)}
+                          className={`p-2 rounded-lg cursor-pointer transition-all duration-200 hover:scale-105 ${
+                            task.completed ? 'opacity-50' : ''
+                          } ${CATEGORY_COLORS[task.category] || 'bg-gray-100 dark:bg-gray-700'}`}
+                        >
+                          <div className="text-xs font-semibold truncate">{task.title}</div>
+                          {task.deadline && (
+                            <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                              {format(parseISO(task.deadline), 'h:mm a')}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Timetable View */}
+      {viewMode === 'timetable' && (
+        <div className="space-y-4">
+          <div className="card overflow-x-auto">
+            <div className="min-w-full">
+              <div className="grid grid-cols-8 gap-1">
+                {/* Time column header */}
+                <div className="p-2 font-semibold text-sm text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
+                  Time
+                </div>
+                {/* Day headers */}
+                {getTasksForTimetable().map((dayData, index) => {
+                  const isToday = isSameDay(dayData.date, new Date());
+                  return (
+                    <div
+                      key={index}
+                      className={`p-2 font-semibold text-sm text-center border-b border-gray-200 dark:border-gray-700 ${
+                        isToday ? 'text-theme' : 'text-gray-700 dark:text-gray-300'
+                      }`}
+                    >
+                      <div>{format(dayData.date, 'EEE')}</div>
+                      <div className="text-xs">{format(dayData.date, 'MMM d')}</div>
+                    </div>
+                  );
+                })}
+                
+                {/* Time slots */}
+                {Array.from({ length: 18 }, (_, i) => i + 6).map((hour) => (
+                  <React.Fragment key={hour}>
+                    <div className="p-2 text-xs text-gray-600 dark:text-gray-400 border-r border-gray-200 dark:border-gray-700">
+                      {hour === 12 ? '12 PM' : hour < 12 ? `${hour} AM` : `${hour - 12} PM`}
+                    </div>
+                    {getTasksForTimetable().map((dayData, dayIndex) => {
+                      const tasksAtHour = dayData.tasksByHour[hour] || [];
+                      return (
+                        <div
+                          key={dayIndex}
+                          className="p-1 border-r border-b border-gray-200 dark:border-gray-700 min-h-[60px]"
+                        >
+                          {tasksAtHour.map((task) => (
+                            <div
+                              key={task.id}
+                              onClick={() => handleOpenModal(task)}
+                              className={`p-1 mb-1 rounded text-xs cursor-pointer transition-all duration-200 hover:scale-105 ${
+                                task.completed ? 'opacity-50' : ''
+                              } ${CATEGORY_COLORS[task.category] || 'bg-gray-100 dark:bg-gray-700'}`}
+                            >
+                              <div className="font-semibold truncate">{task.title}</div>
+                              {task.deadline && (
+                                <div className="text-xs opacity-75">
+                                  {format(parseISO(task.deadline), 'h:mm a')}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add/Edit Task Modal */}
       {isModalOpen && (
@@ -658,7 +991,7 @@ const TaskManager = () => {
                 </div>
               </div>
               <div className="flex gap-3 pt-4">
-                <button type="submit" className="btn-primary flex-1 ripple group rounded-2xl shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95">
+                <button type="submit" className="btn-primary flex-1 ripple group">
                   <span className="flex items-center justify-center gap-2">
                     {editingTask ? (
                       <>
@@ -676,7 +1009,7 @@ const TaskManager = () => {
                 <button
                   type="button"
                   onClick={handleCloseModal}
-                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-white/70 dark:bg-gray-800/80 shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95 text-gray-800 dark:text-gray-100 font-semibold"
+                  className="btn-secondary"
                 >
                   Cancel
                 </button>

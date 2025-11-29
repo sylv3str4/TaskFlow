@@ -1,0 +1,375 @@
+/**
+ * Quests Component
+ * Displays daily, weekly, and achievement quests with progress tracking
+ */
+
+import React, { useEffect, useState } from 'react';
+import { useApp } from '../context/AppContext';
+import { getThemeColors } from '../utils/theme';
+import { useToast } from '../context/ToastContext';
+import {
+  Target,
+  CheckCircle,
+  Clock,
+  Star,
+  Coins,
+  TrendingUp,
+  Calendar,
+  Award,
+  Zap,
+} from 'lucide-react';
+import { format, isSameDay, parseISO, startOfWeek, endOfWeek } from 'date-fns';
+
+const Quests = () => {
+  const { quests, gamification, tasks, studyLogs, checkQuestProgress } = useApp();
+  const { showToast } = useToast();
+  const [activeTab, setActiveTab] = useState('daily');
+
+  // Calculate and update quest progress
+  useEffect(() => {
+    if (!quests || !checkQuestProgress) return;
+
+    // Check daily task quest
+    const today = new Date();
+    const todayTasks = tasks.filter(t => 
+      t.completed && t.completedAt && isSameDay(parseISO(t.completedAt), today)
+    ).length;
+    const dailyTaskQuest = quests.daily?.quests?.find(q => q.id === 'daily_complete_3_tasks' && !q.completed);
+    if (dailyTaskQuest) {
+      const currentProgress = quests.progress?.[dailyTaskQuest.id] || 0;
+      if (todayTasks > currentProgress) {
+        checkQuestProgress('tasks', todayTasks - currentProgress);
+      }
+    }
+
+    // Check daily study quest
+    const todayLogs = studyLogs.filter(log =>
+      isSameDay(parseISO(log.timestamp), today)
+    );
+    const todayStudyMinutes = todayLogs.reduce((sum, log) => sum + (log.duration || 0), 0);
+    const dailyStudyQuest = quests.daily?.quests?.find(q => q.id === 'daily_study_30_min' && !q.completed);
+    if (dailyStudyQuest) {
+      const currentProgress = quests.progress?.[dailyStudyQuest.id] || 0;
+      if (todayStudyMinutes > currentProgress) {
+        checkQuestProgress('study', todayStudyMinutes - currentProgress);
+      }
+    }
+
+    // Check daily pomodoro quest
+    const todayPomodoros = todayLogs.filter(log => log.type === 'pomodoro').length;
+    const dailyPomodoroQuest = quests.daily?.quests?.find(q => q.id === 'daily_complete_pomodoro' && !q.completed);
+    if (dailyPomodoroQuest && todayPomodoros > 0) {
+      const currentProgress = quests.progress?.[dailyPomodoroQuest.id] || 0;
+      if (todayPomodoros > currentProgress) {
+        checkQuestProgress('pomodoro', todayPomodoros - currentProgress);
+      }
+    }
+
+    // Check weekly quests
+    const now = new Date();
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+    
+    const weekTasks = tasks.filter(t =>
+      t.completed && t.completedAt && 
+      parseISO(t.completedAt) >= weekStart && 
+      parseISO(t.completedAt) <= weekEnd
+    ).length;
+    const weeklyTaskQuest = quests.weekly?.quests?.find(q => q.id === 'weekly_complete_20_tasks' && !q.completed);
+    if (weeklyTaskQuest) {
+      const currentProgress = quests.progress?.[weeklyTaskQuest.id] || 0;
+      if (weekTasks > currentProgress) {
+        checkQuestProgress('tasks', weekTasks - currentProgress);
+      }
+    }
+
+    const weekLogs = studyLogs.filter(log => {
+      const logDate = parseISO(log.timestamp);
+      return logDate >= weekStart && logDate <= weekEnd;
+    });
+    const weekStudyMinutes = weekLogs.reduce((sum, log) => sum + (log.duration || 0), 0);
+    const weeklyStudyQuest = quests.weekly?.quests?.find(q => q.id === 'weekly_study_5_hours' && !q.completed);
+    if (weeklyStudyQuest) {
+      const currentProgress = quests.progress?.[weeklyStudyQuest.id] || 0;
+      if (weekStudyMinutes > currentProgress) {
+        checkQuestProgress('study', weekStudyMinutes - currentProgress);
+      }
+    }
+
+    const weekPomodoros = weekLogs.filter(log => log.type === 'pomodoro').length;
+    const weeklyPomodoroQuest = quests.weekly?.quests?.find(q => q.id === 'weekly_complete_10_pomodoros' && !q.completed);
+    if (weeklyPomodoroQuest) {
+      const currentProgress = quests.progress?.[weeklyPomodoroQuest.id] || 0;
+      if (weekPomodoros > currentProgress) {
+        checkQuestProgress('pomodoro', weekPomodoros - currentProgress);
+      }
+    }
+
+    // Check achievement quests
+    if (gamification?.level) {
+      const levelQuest = quests.achievements?.find(q => q.id === 'achieve_level_5' && !q.completed);
+      if (levelQuest) {
+        checkQuestProgress('level', gamification.level);
+      }
+    }
+
+    const totalCompleted = tasks.filter(t => t.completed).length;
+    const totalTaskQuest = quests.achievements?.find(q => q.id === 'achieve_complete_100_tasks' && !q.completed);
+    if (totalTaskQuest && totalCompleted > 0) {
+      const currentProgress = quests.progress?.[totalTaskQuest.id] || 0;
+      if (totalCompleted > currentProgress) {
+        checkQuestProgress('tasks', totalCompleted - currentProgress);
+      }
+    }
+
+    const totalStudyMinutes = studyLogs.reduce((sum, log) => sum + (log.duration || 0), 0);
+    const totalStudyQuest = quests.achievements?.find(q => q.id === 'achieve_study_50_hours' && !q.completed);
+    if (totalStudyQuest && totalStudyMinutes > 0) {
+      const currentProgress = quests.progress?.[totalStudyQuest.id] || 0;
+      if (totalStudyMinutes > currentProgress) {
+        checkQuestProgress('study', totalStudyMinutes - currentProgress);
+      }
+    }
+
+    const totalPomodoros = studyLogs.filter(log => log.type === 'pomodoro').length;
+    const totalPomodoroQuest = quests.achievements?.find(q => q.id === 'achieve_complete_100_pomodoros' && !q.completed);
+    if (totalPomodoroQuest && totalPomodoros > 0) {
+      const currentProgress = quests.progress?.[totalPomodoroQuest.id] || 0;
+      if (totalPomodoros > currentProgress) {
+        checkQuestProgress('pomodoro', totalPomodoros - currentProgress);
+      }
+    }
+
+    if (gamification?.pet?.rarity === 'Legendary') {
+      const legendaryQuest = quests.achievements?.find(q => q.id === 'achieve_get_legendary_pet' && !q.completed);
+      if (legendaryQuest) {
+        const currentProgress = quests.progress?.[legendaryQuest.id] || 0;
+        if (currentProgress < 1) {
+          checkQuestProgress('pet', 1);
+        }
+      }
+    }
+  }, [tasks, studyLogs, gamification?.level, gamification?.pet?.rarity, quests, checkQuestProgress]);
+
+  // Calculate daily progress
+  const getDailyProgress = () => {
+    const today = new Date();
+    const todayTasks = tasks.filter(t => 
+      t.completed && t.completedAt && isSameDay(parseISO(t.completedAt), today)
+    ).length;
+    
+    const todayLogs = studyLogs.filter(log =>
+      isSameDay(parseISO(log.timestamp), today)
+    );
+    const todayStudyMinutes = todayLogs.reduce((sum, log) => sum + (log.duration || 0), 0);
+
+    return { tasks: todayTasks, studyMinutes: todayStudyMinutes };
+  };
+
+  // Calculate weekly progress
+  const getWeeklyProgress = () => {
+    const now = new Date();
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+    
+    const weekTasks = tasks.filter(t =>
+      t.completed && t.completedAt && 
+      parseISO(t.completedAt) >= weekStart && 
+      parseISO(t.completedAt) <= weekEnd
+    ).length;
+    
+    const weekLogs = studyLogs.filter(log => {
+      const logDate = parseISO(log.timestamp);
+      return logDate >= weekStart && logDate <= weekEnd;
+    });
+    const weekStudyMinutes = weekLogs.reduce((sum, log) => sum + (log.duration || 0), 0);
+    const weekPomodoros = weekLogs.filter(log => log.type === 'pomodoro').length;
+
+    return { tasks: weekTasks, studyMinutes: weekStudyMinutes, pomodoros: weekPomodoros };
+  };
+
+  const dailyProgress = getDailyProgress();
+  const weeklyProgress = getWeeklyProgress();
+
+  const renderQuest = (quest, type) => {
+    const progress = quests.progress?.[quest.id] || 0;
+    const isCompleted = quest.completed || progress >= quest.target;
+    const progressPercent = Math.min(100, (progress / quest.target) * 100);
+
+    return (
+      <div
+        key={quest.id}
+        className={`card relative overflow-hidden ${
+          isCompleted
+            ? 'bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800'
+            : ''
+        }`}
+      >
+        {isCompleted && (
+          <div className="absolute inset-0 bg-gradient-to-r from-primary-500/5 to-transparent pointer-events-none" />
+        )}
+        <div className="relative p-6">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-start gap-3 flex-1">
+              <div
+                className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${
+                  isCompleted
+                    ? 'bg-green-100 dark:bg-green-900/40'
+                    : 'bg-primary-100 dark:bg-primary-900/40'
+                }`}
+              >
+                {quest.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3
+                    className={`text-lg font-semibold ${
+                      isCompleted
+                        ? 'text-green-700 dark:text-green-300'
+                        : 'text-gray-900 dark:text-white'
+                    }`}
+                  >
+                    {quest.title}
+                  </h3>
+                  {isCompleted && (
+                    <CheckCircle className="text-green-500 flex-shrink-0" size={20} />
+                  )}
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {quest.description}
+                </p>
+              </div>
+            </div>
+            {isCompleted && (
+              <div className="flex flex-col items-end gap-1 ml-4">
+                <div className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
+                  <Star size={16} />
+                  <span className="text-sm font-semibold">{quest.reward.xp} XP</span>
+                </div>
+                <div className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
+                  <Coins size={16} />
+                  <span className="text-sm font-semibold">{quest.reward.coins}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {!isCompleted && (
+            <>
+              <div className="mb-2">
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <span className="text-gray-600 dark:text-gray-400">Progress</span>
+                  <span className="font-semibold text-gray-900 dark:text-white">
+                    {progress} / {quest.target}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="h-2 rounded-full transition-all duration-500 progress-bar-theme"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex items-center gap-4 text-sm">
+                  <div className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
+                    <Star size={14} />
+                    <span className="font-medium">{quest.reward.xp} XP</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
+                    <Coins size={14} />
+                    <span className="font-medium">{quest.reward.coins} Coins</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const dailyQuests = quests.daily?.quests || [];
+  const weeklyQuests = quests.weekly?.quests || [];
+
+  const completedDaily = dailyQuests.filter(q => q.completed).length;
+  const completedWeekly = weeklyQuests.filter(q => q.completed).length;
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <Target className="text-primary-500" size={28} />
+            Quests
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">
+            Complete quests to earn XP and coins
+          </p>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700">
+        <button
+          onClick={() => setActiveTab('daily')}
+          className={`px-4 py-2 font-semibold text-sm transition-all duration-200 border-b-2 ${
+            activeTab === 'daily'
+              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+              : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Calendar size={18} />
+            Daily ({completedDaily}/{dailyQuests.length})
+          </div>
+        </button>
+        <button
+          onClick={() => setActiveTab('weekly')}
+          className={`px-4 py-2 font-semibold text-sm transition-all duration-200 border-b-2 ${
+            activeTab === 'weekly'
+              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+              : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Clock size={18} />
+            Weekly ({completedWeekly}/{weeklyQuests.length})
+          </div>
+        </button>
+      </div>
+
+      {/* Quest Lists */}
+      <div className="space-y-4">
+        {activeTab === 'daily' && (
+          <>
+            {dailyQuests.length === 0 ? (
+              <div className="card p-8 text-center">
+                <p className="text-gray-500 dark:text-gray-400">No daily quests available</p>
+              </div>
+            ) : (
+              dailyQuests.map(quest => renderQuest(quest, 'daily'))
+            )}
+          </>
+        )}
+
+        {activeTab === 'weekly' && (
+          <>
+            {weeklyQuests.length === 0 ? (
+              <div className="card p-8 text-center">
+                <p className="text-gray-500 dark:text-gray-400">No weekly quests available</p>
+              </div>
+            ) : (
+              weeklyQuests.map(quest => renderQuest(quest, 'weekly'))
+            )}
+          </>
+        )}
+
+      </div>
+    </div>
+  );
+};
+
+export default Quests;
+

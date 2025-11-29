@@ -13,6 +13,7 @@ const STORAGE_KEYS = {
   STUDY_LOGS: 'taskflow_study_logs',
   SETTINGS: 'taskflow_settings',
   GAMIFICATION: 'taskflow_gamification',
+  QUESTS: 'taskflow_quests',
 };
 
 /**
@@ -90,6 +91,7 @@ export const getSettings = (userId = null) => {
     pomodoroShortBreak: 5,
     pomodoroLongBreak: 15,
     pomodoroLongBreakInterval: 4,
+    boxTransparency: 0.08, // Default transparency for box theme gradients (0-1)
   });
 };
 export const saveSettings = (settings, userId = null) => {
@@ -106,6 +108,13 @@ const defaultGamification = {
   coins: 0,
   pityCounter: 0,
   inventory: {},
+  equippedTitle: null,
+  unlockedTitles: [],
+  feedCount: 0, // Track total pet feedings
+  currentTheme: 'default',
+  unlockedThemes: ['default'],
+  currentProfileFrame: null,
+  unlockedProfileFrames: [],
   pet: {
     name: 'Pixel',
     species: '🐾',
@@ -114,6 +123,9 @@ const defaultGamification = {
     mood: 'Happy',
     energy: 70,
     hunger: 30,
+    level: 1,
+    exp: 0,
+    expForNextLevel: 50,
     buffs: { xpBoost: 10, coinBoost: 5 },
     debuffs: { xpPenalty: 5 },
   },
@@ -127,6 +139,30 @@ export const getGamification = (userId = null) => {
 
 export const saveGamification = (data, userId = null) => {
   const key = getStorageKey(STORAGE_KEYS.GAMIFICATION, userId);
+  setStorage(key, data);
+};
+
+// Quest storage functions
+const defaultQuests = {
+  daily: {
+    lastReset: null,
+    quests: [],
+  },
+  weekly: {
+    lastReset: null,
+    quests: [],
+  },
+  achievements: [],
+  progress: {},
+};
+
+export const getQuests = (userId = null) => {
+  const key = getStorageKey(STORAGE_KEYS.QUESTS, userId);
+  return getStorage(key, defaultQuests);
+};
+
+export const saveQuests = (data, userId = null) => {
+  const key = getStorageKey(STORAGE_KEYS.QUESTS, userId);
   setStorage(key, data);
 };
 

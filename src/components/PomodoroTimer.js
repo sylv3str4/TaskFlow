@@ -7,6 +7,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 import { Play, Pause, RotateCcw, Settings, Check, Volume2, Timer } from 'lucide-react';
+import { getThemeColors } from '../utils/theme';
 
 // Sound notification function
 const playNotificationSound = () => {
@@ -32,7 +33,7 @@ const playNotificationSound = () => {
 };
 
 const PomodoroTimer = () => {
-  const { settings, addStudyLog, updateSettings, rewardFocusSession } = useApp();
+  const { settings, addStudyLog, updateSettings, rewardFocusSession, gamification } = useApp();
   const { success, info } = useToast();
   const [timeLeft, setTimeLeft] = useState(settings.pomodoroWork * 60); // in seconds
   const [isRunning, setIsRunning] = useState(false);
@@ -47,6 +48,26 @@ const PomodoroTimer = () => {
     pomodoroLongBreakInterval: settings.pomodoroLongBreakInterval,
   });
   const intervalRef = useRef(null);
+
+  // Get session color based on type
+  const getSessionColor = (type) => {
+    const currentTheme = gamification?.currentTheme || 'default';
+    const themeColors = getThemeColors(currentTheme);
+    
+    const sessionColors = {
+      work: {
+        background: `linear-gradient(135deg, ${themeColors.primary} 0%, ${themeColors.secondary || themeColors.primary} 100%)`,
+      },
+      shortBreak: {
+        background: `linear-gradient(135deg, rgb(34, 197, 94) 0%, rgb(22, 163, 74) 100%)`,
+      },
+      longBreak: {
+        background: `linear-gradient(135deg, rgb(59, 130, 246) 0%, rgb(37, 99, 235) 100%)`,
+      },
+    };
+    
+    return sessionColors[type] || sessionColors.work;
+  };
 
   // Update time left when settings change
   useEffect(() => {
@@ -79,7 +100,7 @@ const PomodoroTimer = () => {
       });
 
       success(`Great work! Session ${newCompletedSessions} completed! 🎉`);
-      rewardFocusSession();
+      rewardFocusSession(settings.pomodoroWork);
 
       // Check if it's time for a long break
       if (newCompletedSessions % settings.pomodoroLongBreakInterval === 0) {
@@ -186,19 +207,13 @@ const PomodoroTimer = () => {
     return ((total - timeLeft) / total) * 100;
   })();
 
-  const sessionColors = {
-    work: 'bg-primary-600',
-    shortBreak: 'bg-green-600',
-    longBreak: 'bg-blue-600',
-  };
-
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <Timer className="text-primary-500" size={28} />
+            <Timer className="icon-theme" size={28} />
             Study Timer
           </h2>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
@@ -229,9 +244,10 @@ const PomodoroTimer = () => {
               disabled={isRunning}
               className={`px-4 py-2 rounded-2xl font-medium transition-all duration-200 transform hover:scale-105 active:scale-95 ${
                 sessionType === type
-                  ? `${sessionColors[type]} text-white shadow-lg`
+                  ? 'text-white shadow-lg'
                   : 'bg-white/70 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 shadow hover:shadow-md'
               } ${isRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
+              style={sessionType === type ? getSessionColor(type) : {}}
             >
               {label}
             </button>
@@ -239,7 +255,7 @@ const PomodoroTimer = () => {
         </div>
 
         {/* Circular Progress */}
-        <div className={`relative w-64 h-64 mx-auto mb-8 ${isPulsing ? 'animate-pulse' : ''} ${isRunning ? 'animate-float' : ''}`}>
+        <div className={`relative w-64 h-64 mx-auto mb-8 transition-all duration-500 ease-out ${isPulsing ? 'animate-pulse scale-110' : 'scale-100'} ${isRunning ? 'animate-float' : ''}`}>
           <svg className="transform -rotate-90 w-64 h-64">
             <circle
               cx="128"
@@ -259,17 +275,35 @@ const PomodoroTimer = () => {
               fill="none"
               strokeDasharray={`${2 * Math.PI * 120}`}
               strokeDashoffset={`${2 * Math.PI * 120 * (1 - progress / 100)}`}
-              className={`${sessionColors[sessionType]} transition-all duration-1000 ${isRunning ? 'animate-glow' : ''}`}
+              className={`transition-all duration-1000 ${isRunning ? 'animate-glow' : ''}`}
+              style={{ 
+                stroke: sessionType === 'work' 
+                  ? 'var(--theme-icon-color)' 
+                  : sessionType === 'shortBreak' 
+                    ? 'rgb(22, 163, 74)' 
+                    : 'rgb(37, 99, 235)'
+              }}
               strokeLinecap="round"
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className={`text-5xl font-bold text-gray-900 dark:text-white mb-2 transition-all duration-300 ${isPulsing ? 'scale-125 text-green-500 animate-bounce-subtle' : ''} ${isRunning ? 'transform hover:scale-110' : ''}`}>
+            <div className={`text-5xl font-bold text-gray-900 dark:text-white mb-2 transition-all duration-500 ease-out ${isPulsing ? 'scale-125 text-green-500 animate-bounce-subtle' : ''} ${isRunning ? 'transform hover:scale-110' : ''}`}>
               {formatTime(timeLeft)}
             </div>
             <div className={`text-sm text-gray-600 dark:text-gray-400 capitalize transition-all duration-200 ${isRunning ? 'font-semibold' : ''}`}>
               {sessionType === 'work' ? 'Focus Time' : sessionType === 'shortBreak' ? 'Short Break' : 'Long Break'}
             </div>
+            {sessionType === 'work' && (
+              <div className="text-xs text-theme mt-1 font-medium">
+                {(() => {
+                  const duration = settings.pomodoroWork;
+                  const multiplier = Math.min(1 + (duration / 60) * 2, 5);
+                  const xpPerMin = (1 * multiplier).toFixed(1);
+                  const coinsPerMin = (0.2 * multiplier).toFixed(1);
+                  return `~${xpPerMin} XP/min • ~${coinsPerMin} coins/min`;
+                })()}
+              </div>
+            )}
             {!isRunning && (
               <div className="text-xs text-gray-500 dark:text-gray-500 mt-2 animate-pulse-slow">
                 Press Space to start
@@ -287,7 +321,8 @@ const PomodoroTimer = () => {
         <div className="flex justify-center gap-4">
           <button
             onClick={handleStartPause}
-            className={`${sessionColors[sessionType]} text-white px-6 py-3 rounded-2xl font-medium flex items-center gap-2 hover:opacity-90 transition-all duration-200 transform hover:scale-110 active:scale-95 shadow-lg hover:shadow-xl ripple group`}
+            className="text-white px-6 py-3 rounded-2xl font-medium flex items-center gap-2 hover:opacity-90 transition-all duration-200 transform hover:scale-110 active:scale-95 shadow-lg hover:shadow-xl ripple group"
+            style={getSessionColor(sessionType)}
           >
             {isRunning ? (
               <>
