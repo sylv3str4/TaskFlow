@@ -533,6 +533,16 @@ html {
   }
 }
 
+/* Shimmer animation */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
 .progress-bar {
   position: relative;
   overflow: hidden;
@@ -570,6 +580,10 @@ html {
 
 .border-theme {
   border-color: var(--theme-icon-color, rgb(14, 165, 233));
+}
+
+.bg-theme {
+  background-color: var(--theme-icon-color, rgb(14, 165, 233));
 }
 
 .btn-theme-gradient {

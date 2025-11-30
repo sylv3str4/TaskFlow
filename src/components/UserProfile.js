@@ -7,20 +7,29 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
-import { User, Mail, Calendar, Edit2, Save, X, Award, CheckCircle, Star, Coins, TrendingUp } from 'lucide-react';
+import { 
+  User, Mail, Calendar, Edit2, Save, X, Award, CheckCircle, Star, Coins, 
+  TrendingUp, Target, Zap, Trophy, Crown, Sparkles, Frame, Search, Filter
+} from 'lucide-react';
 import { format } from 'date-fns';
+import { getThemeColors } from '../utils/theme';
 
 const UserProfile = () => {
   const { user, updateProfile } = useAuth();
   const { quests, gamification, tasks, studyLogs, equipTitle, unequipTitle, checkQuestProgress } = useApp();
   const { success, error } = useToast();
   const [isEditing, setIsEditing] = useState(false);
-  const [activeTab, setActiveTab] = useState('profile'); // profile, achievements
+  const [activeTab, setActiveTab] = useState('profile');
   const [selectedAchievement, setSelectedAchievement] = useState(null);
+  const [achievementSearch, setAchievementSearch] = useState('');
+  const [achievementFilter, setAchievementFilter] = useState('all'); // all, completed, in-progress
   const [formData, setFormData] = useState({
     username: user?.username || '',
     email: user?.email || '',
   });
+
+  const currentTheme = gamification?.currentTheme || 'default';
+  const themeColors = getThemeColors(currentTheme);
 
   // Check achievement progress
   useEffect(() => {
@@ -79,7 +88,7 @@ const UserProfile = () => {
           }
         }
       }
-      if (petRarity === 'Epic' || petRarity === 'Legendary') {
+      if (petRarity === 'Epic' || petRarity === 'Legendary' || petRarity === 'Mythical' || petRarity === 'Secret') {
         const epicQuest = quests.achievements?.find(q => q.id === 'achieve_get_epic_pet' && !q.completed);
         if (epicQuest) {
           const currentProgress = quests.progress?.[epicQuest.id] || 0;
@@ -88,10 +97,28 @@ const UserProfile = () => {
           }
         }
       }
-      if (petRarity === 'Legendary') {
+      if (petRarity === 'Legendary' || petRarity === 'Mythical' || petRarity === 'Secret') {
         const legendaryQuest = quests.achievements?.find(q => q.id === 'achieve_get_legendary_pet' && !q.completed);
         if (legendaryQuest) {
           const currentProgress = quests.progress?.[legendaryQuest.id] || 0;
+          if (currentProgress < 1) {
+            checkQuestProgress('pet', 1);
+          }
+        }
+      }
+      if (petRarity === 'Mythical' || petRarity === 'Secret') {
+        const mythicalQuest = quests.achievements?.find(q => q.id === 'achieve_get_mythical_pet' && !q.completed);
+        if (mythicalQuest) {
+          const currentProgress = quests.progress?.[mythicalQuest.id] || 0;
+          if (currentProgress < 1) {
+            checkQuestProgress('pet', 1);
+          }
+        }
+      }
+      if (petRarity === 'Secret') {
+        const secretQuest = quests.achievements?.find(q => q.id === 'achieve_get_secret_pet' && !q.completed);
+        if (secretQuest) {
+          const currentProgress = quests.progress?.[secretQuest.id] || 0;
           if (currentProgress < 1) {
             checkQuestProgress('pet', 1);
           }
@@ -154,7 +181,6 @@ const UserProfile = () => {
     const progress = quests.progress?.[achievement.id] || 0;
     const isCompleted = achievement.completed || progress >= achievement.target;
     
-    // Calculate current progress based on category
     let currentProgress = progress;
     if (achievement.category === 'level') {
       currentProgress = gamification?.level || 0;
@@ -168,9 +194,15 @@ const UserProfile = () => {
       if (achievement.id === 'achieve_get_rare_pet') {
         currentProgress = (gamification?.pet?.rarity === 'Rare' || gamification?.pet?.rarity === 'Epic' || gamification?.pet?.rarity === 'Legendary') ? 1 : 0;
       } else if (achievement.id === 'achieve_get_epic_pet') {
-        currentProgress = (gamification?.pet?.rarity === 'Epic' || gamification?.pet?.rarity === 'Legendary') ? 1 : 0;
+        currentProgress = (gamification?.pet?.rarity === 'Epic' || gamification?.pet?.rarity === 'Legendary' || 
+                          gamification?.pet?.rarity === 'Mythical' || gamification?.pet?.rarity === 'Secret') ? 1 : 0;
       } else if (achievement.id === 'achieve_get_legendary_pet') {
-        currentProgress = gamification?.pet?.rarity === 'Legendary' ? 1 : 0;
+        currentProgress = (gamification?.pet?.rarity === 'Legendary' || gamification?.pet?.rarity === 'Mythical' || 
+                          gamification?.pet?.rarity === 'Secret') ? 1 : 0;
+      } else if (achievement.id === 'achieve_get_mythical_pet') {
+        currentProgress = (gamification?.pet?.rarity === 'Mythical' || gamification?.pet?.rarity === 'Secret') ? 1 : 0;
+      } else if (achievement.id === 'achieve_get_secret_pet') {
+        currentProgress = gamification?.pet?.rarity === 'Secret' ? 1 : 0;
       } else if (achievement.id === 'achieve_feed_pet_50_times' || achievement.id === 'achieve_feed_pet_100_times') {
         currentProgress = gamification?.feedCount || 0;
       } else {
@@ -179,7 +211,6 @@ const UserProfile = () => {
     } else if (achievement.category === 'coins') {
       currentProgress = gamification?.coins || 0;
     } else if (achievement.category === 'streak') {
-      // Streak calculation - check consecutive days with study logs
       const today = new Date();
       let streak = 0;
       for (let i = 0; i < achievement.target; i++) {
@@ -213,17 +244,42 @@ const UserProfile = () => {
   const achievements = quests?.achievements || [];
   const unlockedTitles = gamification?.unlockedTitles || [];
   const equippedTitle = gamification?.equippedTitle;
+  const completedCount = achievements.filter(a => a.completed).length;
+
+  // Filter and search achievements
+  const filteredAchievements = achievements.filter(achievement => {
+    const progress = getAchievementProgress(achievement);
+    
+    // Search filter
+    const matchesSearch = achievementSearch === '' || 
+      achievement.title.toLowerCase().includes(achievementSearch.toLowerCase()) ||
+      achievement.description.toLowerCase().includes(achievementSearch.toLowerCase());
+    
+    // Status filter
+    let matchesFilter = true;
+    if (achievementFilter === 'completed') {
+      matchesFilter = progress.isCompleted;
+    } else if (achievementFilter === 'in-progress') {
+      matchesFilter = !progress.isCompleted && progress.current > 0;
+    }
+    
+    return matchesSearch && matchesFilter;
+  });
+  const totalStudyMinutes = studyLogs.reduce((sum, log) => sum + (log.duration || 0), 0);
+  const totalCompletedTasks = tasks.filter(t => t.completed).length;
+  const currentFrame = gamification?.currentProfileFrame;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in page-enter">
+      {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <User className="text-primary-500" size={28} />
+            <User className="icon-theme" size={28} />
             Profile
           </h2>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            {activeTab === 'profile' ? 'Manage your account information' : 'View your achievements and titles'}
+            {activeTab === 'profile' ? 'Manage your account and view stats' : 'Track your achievements and progress'}
           </p>
         </div>
         {activeTab === 'profile' && !isEditing && (
@@ -241,7 +297,7 @@ const UserProfile = () => {
       <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700">
         <button
           onClick={() => setActiveTab('profile')}
-          className={`px-4 py-2 font-semibold text-sm transition-all duration-200 border-b-2 ${
+          className={`px-6 py-3 font-medium transition-all duration-300 border-b-2 ${
             activeTab === 'profile'
               ? 'border-theme text-theme'
               : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
@@ -254,267 +310,401 @@ const UserProfile = () => {
         </button>
         <button
           onClick={() => setActiveTab('achievements')}
-          className={`px-4 py-2 font-semibold text-sm transition-all duration-200 border-b-2 ${
+          className={`px-6 py-3 font-medium transition-all duration-300 border-b-2 ${
             activeTab === 'achievements'
               ? 'border-theme text-theme'
               : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
           }`}
         >
           <div className="flex items-center gap-2">
-            <Award size={18} />
-            Achievements ({achievements.filter(a => a.completed).length}/{achievements.length})
+            <Trophy className="icon-theme" size={18} />
+            Achievements
+            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+              {completedCount}/{achievements.length}
+            </span>
           </div>
         </button>
       </div>
 
       {/* Profile Tab Content */}
       {activeTab === 'profile' && (
-        <>
+        <div className="space-y-6">
+          {/* Profile Overview Card */}
+          <div className="card">
+            <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
+              {/* Avatar with Frame */}
+              <div className="relative">
+                <div 
+                  className="w-32 h-32 rounded-full flex items-center justify-center shadow-xl relative overflow-hidden"
+                  style={{
+                    background: `linear-gradient(135deg, var(--theme-color-from), var(--theme-color-via), var(--theme-color-to))`,
+                    boxShadow: `0 20px 25px -5px var(--theme-icon-color, rgba(14, 165, 233, 0.3))`
+                  }}
+                >
+                  <User className="text-white" size={56} />
+                  {currentFrame && (
+                    <div className="absolute inset-0 rounded-full border-4 animate-pulse-slow" 
+                      style={{ borderColor: 'var(--theme-icon-color)' }} />
+                  )}
+                </div>
+                {equippedTitle && (
+                  <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2">
+                    <div 
+                      className="px-3 py-1 rounded-full text-xs font-bold text-white shadow-lg flex items-center gap-1"
+                      style={{
+                        background: `linear-gradient(to right, var(--theme-color-from), var(--theme-color-to))`
+                      }}
+                    >
+                      <Crown size={12} />
+                      {equippedTitle}
+                    </div>
+                  </div>
+                )}
+              </div>
 
-      {/* Profile Card */}
-      <div className="card">
-        <div className="flex items-center gap-6 mb-6">
-          <div 
-            className="w-24 h-24 rounded-full flex items-center justify-center shadow-lg"
-            style={{
-              background: `linear-gradient(to bottom right, var(--theme-color-from), var(--theme-color-via), var(--theme-color-to))`,
-              boxShadow: `0 10px 15px -3px var(--theme-icon-color, rgba(14, 165, 233, 0.25))`
-            }}
-          >
-            <User className="text-white" size={40} />
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+              {/* User Info */}
+              <div className="flex-1 text-center md:text-left">
+                <div className="flex flex-col md:flex-row md:items-center gap-3 mb-3">
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      value={formData.username}
+                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                      className="input-field text-2xl font-bold"
+                    />
+                  ) : (
+                    <h3 className="text-3xl font-bold text-gray-900 dark:text-white">
+                      {user.username}
+                    </h3>
+                  )}
+                </div>
                 {isEditing ? (
                   <input
-                    type="text"
-                    value={formData.username}
-                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     className="input-field"
                   />
                 ) : (
-                  user.username
+                  <p className="text-gray-600 dark:text-gray-400 flex items-center justify-center md:justify-start gap-2">
+                    <Mail size={16} />
+                    {user.email}
+                  </p>
                 )}
-              </h3>
-              {equippedTitle && (
-                <span className="badge bg-gradient-to-r from-yellow-500 to-amber-500 text-white border-0 shadow-md">
-                  <Award size={14} />
-                  {equippedTitle}
-                </span>
-              )}
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 flex items-center justify-center md:justify-start gap-2">
+                  <Calendar size={14} />
+                  Member since {format(new Date(user.createdAt), 'MMMM d, yyyy')}
+                </p>
+              </div>
             </div>
-            <p className="text-gray-600 dark:text-gray-400">
-              {isEditing ? (
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="input-field mt-2"
+
+            {isEditing && (
+              <div className="flex gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                <button onClick={handleSave} className="btn-primary flex items-center gap-2">
+                  <Save size={18} />
+                  Save Changes
+                </button>
+                <button onClick={handleCancel} className="btn-secondary flex items-center gap-2">
+                  <X size={18} />
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Stats Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="card-compact">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-xl" style={{ backgroundColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.1)' }}>
+                  <TrendingUp className="icon-theme" size={20} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Level</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{gamification?.level || 1}</p>
+                </div>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-2">
+                <div
+                  className="h-1.5 rounded-full transition-all duration-500"
+                  style={{
+                    width: `${((gamification?.xpForCurrentLevel || 0) / (gamification?.xpForNextLevel || 500)) * 100}%`,
+                    background: `linear-gradient(to right, var(--theme-progress-from), var(--theme-progress-via), var(--theme-progress-to))`
+                  }}
                 />
-              ) : (
-                user.email
-              )}
-            </p>
-          </div>
-        </div>
+              </div>
+            </div>
 
-        <div className="space-y-4 pt-6 border-t border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3">
-            <User className="text-gray-400" size={20} />
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Username</p>
-              <p className="text-gray-900 dark:text-white font-medium">{user.username}</p>
+            <div className="card-compact">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl" style={{ backgroundColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.1)' }}>
+                  <Target className="icon-theme" size={20} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Tasks Completed</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalCompletedTasks}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="card-compact">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl" style={{ backgroundColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.1)' }}>
+                  <Zap className="icon-theme" size={20} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Study Time</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {Math.floor(totalStudyMinutes / 60)}h {totalStudyMinutes % 60}m
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="card-compact">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl" style={{ backgroundColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.1)' }}>
+                  <Trophy className="icon-theme" size={20} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Achievements</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {completedCount}/{achievements.length}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
-
-          <div className="flex items-center gap-3">
-            <Mail className="text-gray-400" size={20} />
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Email</p>
-              <p className="text-gray-900 dark:text-white font-medium">{user.email}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Calendar className="text-gray-400" size={20} />
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Member since</p>
-              <p className="text-gray-900 dark:text-white font-medium">
-                {format(new Date(user.createdAt), 'MMMM d, yyyy')}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {isEditing && (
-          <div className="flex gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-            <button onClick={handleSave} className="btn-primary flex items-center gap-2">
-              <Save size={18} />
-              Save Changes
-            </button>
-            <button onClick={handleCancel} className="btn-secondary">
-              <X size={18} />
-              Cancel
-            </button>
-          </div>
-        )}
-      </div>
 
           {/* Title Selection */}
           {unlockedTitles.length > 0 && (
             <div className="card">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                 <Award className="icon-theme" size={20} />
-                Equipped Title
+                Unlocked Titles
               </h3>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-3">
                 {unlockedTitles.map((title) => (
                   <button
                     key={title}
                     onClick={() => handleEquipTitle(title)}
-                    className={`badge-lg transition-all duration-300 ${
+                    className={`px-4 py-2 rounded-xl font-medium transition-all duration-300 flex items-center gap-2 ${
                       equippedTitle === title
-                        ? 'btn-theme-gradient text-white shadow-lg'
+                        ? 'text-white shadow-lg transform scale-105'
                         : 'bg-white/80 dark:bg-gray-700/80 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600'
                     }`}
+                    style={equippedTitle === title ? {
+                      background: `linear-gradient(to right, var(--theme-color-from), var(--theme-color-to))`
+                    } : {}}
                   >
-                    <Award size={14} />
+                    <Crown size={16} />
                     {title}
-                    {equippedTitle === title && <CheckCircle size={14} className="ml-1" />}
+                    {equippedTitle === title && <CheckCircle size={16} className="ml-1" />}
                   </button>
                 ))}
-                {equippedTitle && (
-                  <button
-                    onClick={() => handleEquipTitle(equippedTitle)}
-                    className="badge-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
-                  >
-                    <X size={14} />
-                    Unequip
-                  </button>
-                )}
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* Achievements Tab Content */}
       {activeTab === 'achievements' && (
         <div className="space-y-6">
+          {/* Achievement Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="card-compact">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-green-100 dark:bg-green-900/30">
+                  <CheckCircle className="text-green-600 dark:text-green-400" size={24} />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Completed</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{completedCount}</p>
+                </div>
+              </div>
+            </div>
+            <div className="card-compact">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl" style={{ backgroundColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.1)' }}>
+                  <Target className="icon-theme" size={24} />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">In Progress</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{achievements.length - completedCount}</p>
+                </div>
+              </div>
+            </div>
+            <div className="card-compact">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-yellow-100 dark:bg-yellow-900/30">
+                  <Star className="text-yellow-600 dark:text-yellow-400" size={24} />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Completion Rate</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {achievements.length > 0 ? Math.round((completedCount / achievements.length) * 100) : 0}%
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Title Selection in Achievements Tab */}
           {unlockedTitles.length > 0 && (
             <div className="card">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                <Award className="icon-theme" size={20} />
+                <Crown className="icon-theme" size={20} />
                 Equipped Title
               </h3>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-3">
                 {unlockedTitles.map((title) => (
                   <button
                     key={title}
                     onClick={() => handleEquipTitle(title)}
-                    className={`badge-lg transition-all duration-300 ${
+                    className={`px-4 py-2 rounded-xl font-medium transition-all duration-300 flex items-center gap-2 ${
                       equippedTitle === title
-                        ? 'btn-theme-gradient text-white shadow-lg'
+                        ? 'text-white shadow-lg transform scale-105'
                         : 'bg-white/80 dark:bg-gray-700/80 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600'
                     }`}
+                    style={equippedTitle === title ? {
+                      background: `linear-gradient(to right, var(--theme-color-from), var(--theme-color-to))`
+                    } : {}}
                   >
-                    <Award size={14} />
+                    <Crown size={16} />
                     {title}
-                    {equippedTitle === title && <CheckCircle size={14} className="ml-1" />}
+                    {equippedTitle === title && <CheckCircle size={16} className="ml-1" />}
                   </button>
                 ))}
-                {equippedTitle && (
-                  <button
-                    onClick={() => handleEquipTitle(equippedTitle)}
-                    className="badge-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
-                  >
-                    <X size={14} />
-                    Unequip
-                  </button>
-                )}
               </div>
             </div>
           )}
 
           {/* Achievements Grid */}
-          <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-              <Award className="text-primary-500" size={20} />
-              All Achievements
-            </h3>
+          <div className="card hover:scale-100">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <Trophy className="icon-theme" size={20} />
+                All Achievements
+              </h3>
+              
+              {/* Search and Filter */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                {/* Search Bar */}
+                <div className="relative flex-1 sm:min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                  <input
+                    type="text"
+                    placeholder="Search achievements..."
+                    value={achievementSearch}
+                    onChange={(e) => setAchievementSearch(e.target.value)}
+                    className="input-field pl-10 pr-4"
+                  />
+                </div>
+                
+                {/* Filter Dropdown */}
+                <div className="relative">
+                  <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 z-10" size={18} />
+                  <select
+                    value={achievementFilter}
+                    onChange={(e) => setAchievementFilter(e.target.value)}
+                    className="input-field pl-10 pr-8 appearance-none cursor-pointer"
+                  >
+                    <option value="all">All</option>
+                    <option value="completed">Completed</option>
+                    <option value="in-progress">In Progress</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            
             {achievements.length === 0 ? (
-              <p className="text-gray-500 dark:text-gray-400 text-center py-8">No achievements available</p>
+              <div className="text-center py-12">
+                <Trophy className="text-gray-400 mx-auto mb-4" size={48} />
+                <p className="text-gray-500 dark:text-gray-400">No achievements available</p>
+              </div>
+            ) : filteredAchievements.length === 0 ? (
+              <div className="text-center py-12">
+                <Search className="text-gray-400 mx-auto mb-4" size={48} />
+                <p className="text-gray-500 dark:text-gray-400">No achievements match your search</p>
+              </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {achievements.map((achievement) => {
+                {filteredAchievements.map((achievement) => {
                   const progress = getAchievementProgress(achievement);
                   return (
                     <button
                       key={achievement.id}
                       onClick={() => setSelectedAchievement(achievement)}
-                      className={`text-left card-compact transition-all duration-300 hover:scale-[1.02] hover:shadow-xl ${
+                      className={`text-left card-compact transition-all duration-300 hover:scale-[1.02] hover:shadow-xl relative overflow-hidden ${
                         progress.isCompleted
-                          ? 'bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800'
+                          ? 'ring-2 ring-green-500/50 dark:ring-green-400/50'
                           : ''
                       }`}
                     >
-                      <div className="flex flex-col items-center text-center mb-3">
+                      {progress.isCompleted && (
+                        <div className="absolute top-2 right-2">
+                          <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center shadow-lg">
+                            <CheckCircle className="text-white" size={20} />
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="flex flex-col items-center text-center mb-4">
                         <div
-                          className={`w-16 h-16 rounded-xl flex items-center justify-center text-3xl mb-2 ${
+                          className={`w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mb-3 shadow-lg ${
                             progress.isCompleted
-                              ? 'bg-green-100 dark:bg-green-900/40'
-                              : ''
+                              ? 'bg-gradient-to-br from-green-400 to-emerald-500'
+                              : 'bg-gray-100 dark:bg-gray-800'
                           }`}
                         >
                           {achievement.icon}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <h4 className={`font-semibold text-base ${
-                            progress.isCompleted
-                              ? 'text-green-700 dark:text-green-300'
-                              : 'text-gray-900 dark:text-white'
-                          }`}>
-                            {achievement.title}
-                          </h4>
-                          {progress.isCompleted && (
-                            <CheckCircle className="text-green-500 flex-shrink-0" size={18} />
-                          )}
-                        </div>
+                        <h4 className={`font-bold text-lg mb-1 ${
+                          progress.isCompleted
+                            ? 'text-green-700 dark:text-green-300'
+                            : 'text-gray-900 dark:text-white'
+                        }`}>
+                          {achievement.title}
+                        </h4>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                          {achievement.description}
+                        </p>
                       </div>
-                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-3 text-center">
-                        {achievement.description}
-                      </p>
+
                       {!progress.isCompleted && (
-                        <div className="mb-2">
-                          <div className="flex items-center justify-between text-xs mb-1">
-                            <span className="text-gray-600 dark:text-gray-400">Progress</span>
-                            <span className="font-semibold text-gray-900 dark:text-white">
+                        <div className="mb-3">
+                          <div className="flex items-center justify-between text-xs mb-1.5">
+                            <span className="text-gray-600 dark:text-gray-400 font-medium">Progress</span>
+                            <span className="font-bold text-gray-900 dark:text-white">
                               {progress.current} / {progress.target}
                             </span>
                           </div>
                           <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
                             <div
-                              className="h-2 rounded-full transition-all duration-500 progress-bar-theme"
-                              style={{ width: `${progress.percent}%` }}
+                              className="h-2 rounded-full transition-all duration-500"
+                              style={{
+                                width: `${progress.percent}%`,
+                                background: `linear-gradient(to right, var(--theme-progress-from), var(--theme-progress-via), var(--theme-progress-to))`
+                              }}
                             />
                           </div>
                         </div>
                       )}
-                      <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+
+                      <div className="flex flex-wrap items-center justify-center gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
                         <div className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
-                          <Star size={12} />
-                          <span className="text-xs font-medium">{achievement.reward.xp} XP</span>
+                          <Star size={14} />
+                          <span className="text-xs font-semibold">{achievement.reward.xp} XP</span>
                         </div>
                         <div className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
-                          <Coins size={12} />
-                          <span className="text-xs font-medium">{achievement.reward.coins}</span>
+                          <Coins size={14} />
+                          <span className="text-xs font-semibold">{achievement.reward.coins}</span>
                         </div>
                         {achievement.reward.title && (
-                          <div className="flex items-center gap-1 text-theme">
-                            <Award size={12} />
-                            <span className="text-xs font-medium">{achievement.reward.title}</span>
+                          <div className="flex items-center gap-1" style={{ color: 'var(--theme-icon-color)' }}>
+                            <Award size={14} />
+                            <span className="text-xs font-semibold">{achievement.reward.title}</span>
                           </div>
                         )}
                       </div>
@@ -534,16 +724,18 @@ const UserProfile = () => {
           onClick={() => setSelectedAchievement(null)}
         >
           <div
-            className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-md rounded-2xl shadow-2xl max-w-md w-full p-6 animate-scale-in transform border border-gray-200/50 dark:border-gray-700/50"
+            className="card max-w-lg w-full animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${
-                  selectedAchievement.completed
-                    ? 'bg-green-100 dark:bg-green-900/40'
-                    : 'bg-primary-100 dark:bg-primary-900/40'
-                }`}>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+                <div 
+                  className={`w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-lg ${
+                    selectedAchievement.completed
+                      ? 'bg-gradient-to-br from-green-400 to-emerald-500'
+                      : 'bg-gray-100 dark:bg-gray-800'
+                  }`}
+                >
                   {selectedAchievement.icon}
                 </div>
                 {selectedAchievement.title}
@@ -556,13 +748,13 @@ const UserProfile = () => {
               </button>
             </div>
 
-            <div className="space-y-4">
-              <p className="text-gray-600 dark:text-gray-400">
+            <div className="space-y-6">
+              <p className="text-gray-600 dark:text-gray-400 text-lg">
                 {selectedAchievement.description}
               </p>
 
-              <div>
-                <div className="flex items-center justify-between text-sm mb-2">
+              <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50">
+                <div className="flex items-center justify-between text-sm mb-3">
                   <span className="text-gray-600 dark:text-gray-400 font-medium">Requirement</span>
                   <span className="text-gray-900 dark:text-white font-semibold">
                     {selectedAchievement.requirement || selectedAchievement.description}
@@ -573,15 +765,18 @@ const UserProfile = () => {
                   return (
                     <>
                       <div className="flex items-center justify-between text-sm mb-2">
-                        <span className="text-gray-600 dark:text-gray-400">Progress</span>
-                        <span className="font-semibold text-gray-900 dark:text-white">
+                        <span className="text-gray-600 dark:text-gray-400 font-medium">Progress</span>
+                        <span className="font-bold text-gray-900 dark:text-white">
                           {progress.current} / {progress.target}
                         </span>
                       </div>
                       <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
                         <div
-                          className="h-3 rounded-full transition-all duration-500 bg-gradient-to-r from-primary-500 to-primary-300"
-                          style={{ width: `${progress.percent}%` }}
+                          className="h-3 rounded-full transition-all duration-500"
+                          style={{
+                            width: `${progress.percent}%`,
+                            background: `linear-gradient(to right, var(--theme-progress-from), var(--theme-progress-via), var(--theme-progress-to))`
+                          }}
                         />
                       </div>
                     </>
@@ -590,20 +785,25 @@ const UserProfile = () => {
               </div>
 
               <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Rewards:</p>
-                <div className="flex flex-wrap gap-3">
-                  <div className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
-                    <Star size={16} />
-                    <span className="text-sm font-semibold">{selectedAchievement.reward.xp} XP</span>
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Rewards:</p>
+                <div className="flex flex-wrap gap-4">
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-yellow-50 dark:bg-yellow-900/20">
+                    <Star className="text-yellow-600 dark:text-yellow-400" size={18} />
+                    <span className="font-semibold text-yellow-700 dark:text-yellow-300">{selectedAchievement.reward.xp} XP</span>
                   </div>
-                  <div className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
-                    <Coins size={16} />
-                    <span className="text-sm font-semibold">{selectedAchievement.reward.coins} Coins</span>
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-yellow-50 dark:bg-yellow-900/20">
+                    <Coins className="text-yellow-600 dark:text-yellow-400" size={18} />
+                    <span className="font-semibold text-yellow-700 dark:text-yellow-300">{selectedAchievement.reward.coins} Coins</span>
                   </div>
                   {selectedAchievement.reward.title && (
-                    <div className="flex items-center gap-1 text-primary-600 dark:text-primary-400">
-                      <Award size={16} />
-                      <span className="text-sm font-semibold">Title: {selectedAchievement.reward.title}</span>
+                    <div 
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-white"
+                      style={{
+                        background: `linear-gradient(to right, var(--theme-color-from), var(--theme-color-to))`
+                      }}
+                    >
+                      <Award size={18} />
+                      <span className="font-semibold">Title: {selectedAchievement.reward.title}</span>
                     </div>
                   )}
                 </div>
@@ -615,8 +815,9 @@ const UserProfile = () => {
                     handleEquipTitle(selectedAchievement.reward.title);
                     setSelectedAchievement(null);
                   }}
-                  className="btn-primary w-full"
+                  className="btn-primary w-full flex items-center justify-center gap-2"
                 >
+                  <Crown size={18} />
                   {equippedTitle === selectedAchievement.reward.title ? 'Unequip' : 'Equip'} Title
                 </button>
               )}

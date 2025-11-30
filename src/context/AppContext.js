@@ -42,6 +42,9 @@ const ActionTypes = {
   SET_GAMIFICATION: 'SET_GAMIFICATION',
   ADD_XP: 'ADD_XP',
   UPDATE_PET: 'UPDATE_PET',
+  ADD_PET_TO_INVENTORY: 'ADD_PET_TO_INVENTORY',
+  EQUIP_PET: 'EQUIP_PET',
+  UNEQUIP_PET: 'UNEQUIP_PET',
   UPDATE_INVENTORY: 'UPDATE_INVENTORY',
   UPDATE_PITY: 'UPDATE_PITY',
 
@@ -82,17 +85,8 @@ const initialState = {
     pityCounter: 0, // Tracks spins without rare+ pet
     inventory: {}, // Food inventory: { foodId: quantity }
     equippedTitle: null, // Currently equipped title
-  pet: {
-    name: 'Pixel',
-    species: '🐾',
-    rarity: 'Common',
-    color: '#0ea5e9',
-    mood: 'Happy',
-    energy: 70,
-    hunger: 30,
-    buffs: { xpBoost: 10, coinBoost: 5 },
-    debuffs: { xpPenalty: 5 },
-  },
+    petInventory: [], // Array of all pets you've rolled: [{ id, name, species, rarity, color, mood, energy, hunger, buffs, debuffs, level, exp, expForNextLevel }]
+    equippedPets: [], // Array of up to 3 equipped pet IDs
     lastRewardReason: null,
   },
   quests: {
@@ -125,8 +119,99 @@ const getLevelStats = (xp) => {
 const PET_SPIN_COST = 25;
 const PITY_THRESHOLD = 10; // Guarantee rare+ after 10 spins
 
-// Quest definitions
-const generateDailyQuests = () => [
+// GMT+7 timezone helpers - work entirely in UTC
+const getGMT7Timestamp = () => {
+  const now = new Date();
+  const utcTimestamp = now.getTime() + (now.getTimezoneOffset() * 60000);
+  return utcTimestamp + (7 * 3600000);
+};
+
+const getGMT7DateComponents = (timestamp = null) => {
+  const gmt7Timestamp = timestamp || getGMT7Timestamp();
+  const utcTimestamp = gmt7Timestamp - (7 * 3600000);
+  const utcDate = new Date(utcTimestamp);
+  return {
+    year: utcDate.getUTCFullYear(),
+    month: utcDate.getUTCMonth(),
+    date: utcDate.getUTCDate(),
+    day: utcDate.getUTCDay(),
+    hours: utcDate.getUTCHours(),
+  };
+};
+
+const getGMT7Midnight = (date = null) => {
+  const gmt7Timestamp = date ? (() => {
+    const utcTimestamp = date.getTime() + (date.getTimezoneOffset() * 60000);
+    return utcTimestamp + (7 * 3600000);
+  })() : getGMT7Timestamp();
+  
+  const { year, month, date: day } = getGMT7DateComponents(gmt7Timestamp);
+  const utcMidnight = Date.UTC(year, month, day, 0, 0, 0, 0);
+  const gmt7MidnightTimestamp = utcMidnight - (7 * 3600000);
+  return new Date(gmt7MidnightTimestamp);
+};
+
+const getGMT7Monday = () => {
+  const { year, month, date, day } = getGMT7DateComponents();
+  
+  let mondayDate;
+  if (day === 0) {
+    mondayDate = date + 1;
+  } else if (day === 1) {
+    mondayDate = date;
+  } else {
+    mondayDate = date - (day - 1);
+  }
+  
+  const utcMondayMidnight = Date.UTC(year, month, mondayDate, 0, 0, 0, 0);
+  const gmt7MondayMidnight = utcMondayMidnight - (7 * 3600000);
+  return new Date(gmt7MondayMidnight);
+};
+
+const shouldResetDaily = (lastReset) => {
+  if (!lastReset) return true;
+  const lastResetDate = new Date(lastReset);
+  const gmt7Today = getGMT7Midnight();
+  const lastResetGMT7 = getGMT7Midnight(lastResetDate);
+  return lastResetGMT7.getTime() < gmt7Today.getTime();
+};
+
+const shouldResetWeekly = (lastReset) => {
+  if (!lastReset) return true;
+  const lastResetDate = new Date(lastReset);
+  const gmt7Monday = getGMT7Monday();
+  
+  const lastResetTimestamp = lastResetDate.getTime() + (lastResetDate.getTimezoneOffset() * 60000) + (7 * 3600000);
+  const { year, month, date, day } = getGMT7DateComponents(lastResetTimestamp);
+  
+  let daysUntilMonday;
+  if (day === 0) {
+    daysUntilMonday = 1;
+  } else if (day === 1) {
+    daysUntilMonday = 0;
+  } else {
+    daysUntilMonday = 8 - day;
+  }
+  
+  const mondayDate = date + daysUntilMonday;
+  const utcMondayMidnight = Date.UTC(year, month, mondayDate, 0, 0, 0, 0);
+  const lastResetMonday = new Date(utcMondayMidnight - (7 * 3600000));
+  
+  return lastResetMonday.getTime() < gmt7Monday.getTime();
+};
+
+// Quest Pool Definitions
+const DAILY_QUEST_POOL = [
+  {
+    id: 'daily_complete_2_tasks',
+    title: 'Complete 2 Tasks',
+    description: 'Complete 2 tasks today',
+    type: 'daily',
+    target: 2,
+    reward: { xp: 40, coins: 12 },
+    icon: '✓',
+    category: 'tasks',
+  },
   {
     id: 'daily_complete_3_tasks',
     title: 'Complete 3 Tasks',
@@ -136,6 +221,26 @@ const generateDailyQuests = () => [
     reward: { xp: 50, coins: 15 },
     icon: '✓',
     category: 'tasks',
+  },
+  {
+    id: 'daily_complete_5_tasks',
+    title: 'Complete 5 Tasks',
+    description: 'Complete 5 tasks today',
+    type: 'daily',
+    target: 5,
+    reward: { xp: 70, coins: 20 },
+    icon: '✓',
+    category: 'tasks',
+  },
+  {
+    id: 'daily_study_20_min',
+    title: 'Study for 20 Minutes',
+    description: 'Complete 20 minutes of study time',
+    type: 'daily',
+    target: 20,
+    reward: { xp: 30, coins: 10 },
+    icon: '⏱️',
+    category: 'study',
   },
   {
     id: 'daily_study_30_min',
@@ -148,14 +253,14 @@ const generateDailyQuests = () => [
     category: 'study',
   },
   {
-    id: 'daily_feed_pet',
-    title: 'Feed Your Pet',
-    description: 'Feed your pet once today',
+    id: 'daily_study_45_min',
+    title: 'Study for 45 Minutes',
+    description: 'Complete 45 minutes of study time',
     type: 'daily',
-    target: 1,
-    reward: { xp: 30, coins: 10 },
-    icon: '🍎',
-    category: 'pet',
+    target: 45,
+    reward: { xp: 55, coins: 18 },
+    icon: '⏱️',
+    category: 'study',
   },
   {
     id: 'daily_complete_pomodoro',
@@ -167,9 +272,49 @@ const generateDailyQuests = () => [
     icon: '🍅',
     category: 'pomodoro',
   },
+  {
+    id: 'daily_complete_2_pomodoros',
+    title: 'Complete 2 Pomodoros',
+    description: 'Complete two Pomodoro sessions today',
+    type: 'daily',
+    target: 2,
+    reward: { xp: 60, coins: 18 },
+    icon: '🍅',
+    category: 'pomodoro',
+  },
+  {
+    id: 'daily_feed_pet',
+    title: 'Feed Your Pet',
+    description: 'Feed your pet once today',
+    type: 'daily',
+    target: 1,
+    reward: { xp: 30, coins: 10 },
+    icon: '🍎',
+    category: 'pet',
+  },
+  {
+    id: 'daily_play_with_pet',
+    title: 'Play with Your Pet',
+    description: 'Play with your pet once today',
+    type: 'daily',
+    target: 1,
+    reward: { xp: 25, coins: 8 },
+    icon: '🎾',
+    category: 'pet',
+  },
 ];
 
-const generateWeeklyQuests = () => [
+const WEEKLY_QUEST_POOL = [
+  {
+    id: 'weekly_complete_15_tasks',
+    title: 'Complete 15 Tasks',
+    description: 'Complete 15 tasks this week',
+    type: 'weekly',
+    target: 15,
+    reward: { xp: 180, coins: 45 },
+    icon: '✓',
+    category: 'tasks',
+  },
   {
     id: 'weekly_complete_20_tasks',
     title: 'Complete 20 Tasks',
@@ -181,14 +326,54 @@ const generateWeeklyQuests = () => [
     category: 'tasks',
   },
   {
+    id: 'weekly_complete_30_tasks',
+    title: 'Complete 30 Tasks',
+    description: 'Complete 30 tasks this week',
+    type: 'weekly',
+    target: 30,
+    reward: { xp: 300, coins: 75 },
+    icon: '✓',
+    category: 'tasks',
+  },
+  {
+    id: 'weekly_study_4_hours',
+    title: 'Study for 4 Hours',
+    description: 'Complete 4 hours of study time this week',
+    type: 'weekly',
+    target: 240,
+    reward: { xp: 250, coins: 60 },
+    icon: '⏱️',
+    category: 'study',
+  },
+  {
     id: 'weekly_study_5_hours',
     title: 'Study for 5 Hours',
     description: 'Complete 5 hours of study time this week',
     type: 'weekly',
-    target: 300, // minutes
+    target: 300,
     reward: { xp: 300, coins: 75 },
     icon: '⏱️',
     category: 'study',
+  },
+  {
+    id: 'weekly_study_7_hours',
+    title: 'Study for 7 Hours',
+    description: 'Complete 7 hours of study time this week',
+    type: 'weekly',
+    target: 420,
+    reward: { xp: 400, coins: 100 },
+    icon: '⏱️',
+    category: 'study',
+  },
+  {
+    id: 'weekly_complete_8_pomodoros',
+    title: 'Complete 8 Pomodoros',
+    description: 'Complete 8 Pomodoro sessions this week',
+    type: 'weekly',
+    target: 8,
+    reward: { xp: 200, coins: 50 },
+    icon: '🍅',
+    category: 'pomodoro',
   },
   {
     id: 'weekly_complete_10_pomodoros',
@@ -201,6 +386,26 @@ const generateWeeklyQuests = () => [
     category: 'pomodoro',
   },
   {
+    id: 'weekly_complete_15_pomodoros',
+    title: 'Complete 15 Pomodoros',
+    description: 'Complete 15 Pomodoro sessions this week',
+    type: 'weekly',
+    target: 15,
+    reward: { xp: 350, coins: 85 },
+    icon: '🍅',
+    category: 'pomodoro',
+  },
+  {
+    id: 'weekly_feed_pet_5_times',
+    title: 'Feed Pet 5 Times',
+    description: 'Feed your pet 5 times this week',
+    type: 'weekly',
+    target: 5,
+    reward: { xp: 120, coins: 30 },
+    icon: '🍎',
+    category: 'pet',
+  },
+  {
     id: 'weekly_feed_pet_7_times',
     title: 'Feed Pet 7 Times',
     description: 'Feed your pet 7 times this week',
@@ -210,7 +415,90 @@ const generateWeeklyQuests = () => [
     icon: '🍎',
     category: 'pet',
   },
+  {
+    id: 'weekly_play_with_pet_5_times',
+    title: 'Play with Pet 5 Times',
+    description: 'Play with your pet 5 times this week',
+    type: 'weekly',
+    target: 5,
+    reward: { xp: 100, coins: 25 },
+    icon: '🎾',
+    category: 'pet',
+  },
+  {
+    id: 'weekly_study_streak_5_days',
+    title: '5-Day Study Streak',
+    description: 'Study for at least 20 minutes on 5 different days this week',
+    type: 'weekly',
+    target: 5,
+    reward: { xp: 280, coins: 70 },
+    icon: '🔥',
+    category: 'study',
+  },
+  {
+    id: 'weekly_complete_all_daily_quests',
+    title: 'Complete All Daily Quests',
+    description: 'Complete all daily quests on 3 different days this week',
+    type: 'weekly',
+    target: 3,
+    reward: { xp: 320, coins: 80 },
+    icon: '⭐',
+    category: 'achievement',
+  },
 ];
+
+// Guaranteed quests that always appear
+const GUARANTEED_DAILY_QUEST = {
+  id: 'daily_complete_daily_quests',
+  title: 'Complete Daily Quests',
+  description: 'Complete all daily quests today',
+  type: 'daily',
+  target: 1,
+  reward: { xp: 100, coins: 30 },
+  icon: '⭐',
+  category: 'achievement',
+};
+
+const GUARANTEED_WEEKLY_QUEST = {
+  id: 'weekly_complete_weekly_quests',
+  title: 'Complete Weekly Quests',
+  description: 'Complete all weekly quests this week',
+  type: 'weekly',
+  target: 1,
+  reward: { xp: 500, coins: 150 },
+  icon: '🌟',
+  category: 'achievement',
+};
+
+// Quest randomizer
+const randomizeQuests = (pool, count, guaranteedQuests = []) => {
+  const selected = [...guaranteedQuests];
+  const available = pool.filter(q => !guaranteedQuests.some(gq => gq.id === q.id));
+  
+  // Shuffle available quests
+  const shuffled = [...available].sort(() => Math.random() - 0.5);
+  
+  // Select remaining quests
+  const remaining = count - selected.length;
+  for (let i = 0; i < remaining && i < shuffled.length; i++) {
+    selected.push(shuffled[i]);
+  }
+  
+  return selected;
+};
+
+// Quest generation functions
+const generateDailyQuests = () => {
+  const guaranteed = [{ ...GUARANTEED_DAILY_QUEST, completed: false }];
+  const randomQuests = randomizeQuests(DAILY_QUEST_POOL, 5, guaranteed);
+  return randomQuests;
+};
+
+const generateWeeklyQuests = () => {
+  const guaranteed = [{ ...GUARANTEED_WEEKLY_QUEST, completed: false }];
+  const randomQuests = randomizeQuests(WEEKLY_QUEST_POOL, 10, guaranteed);
+  return randomQuests;
+};
 
 const generateAchievementQuests = () => [
   // Level Achievements
@@ -443,6 +731,28 @@ const generateAchievementQuests = () => [
     requirement: 'Obtain a legendary rarity pet',
   },
   {
+    id: 'achieve_get_mythical_pet',
+    title: 'Mythical Master',
+    description: 'Obtain a mythical rarity pet',
+    type: 'achievement',
+    target: 1,
+    reward: { xp: 5000, coins: 1500, title: 'Mythical Master' },
+    icon: '✨',
+    category: 'pet',
+    requirement: 'Obtain a mythical rarity pet',
+  },
+  {
+    id: 'achieve_get_secret_pet',
+    title: 'Secret Keeper',
+    description: 'Obtain a secret rarity pet',
+    type: 'achievement',
+    target: 1,
+    reward: { xp: 10000, coins: 3000, title: 'Secret Keeper' },
+    icon: '🌌',
+    category: 'pet',
+    requirement: 'Obtain a secret rarity pet',
+  },
+  {
     id: 'achieve_feed_pet_50_times',
     title: 'Caring Companion',
     description: 'Feed your pet 50 times total',
@@ -535,6 +845,8 @@ const getRarityConfig = (rarity) => {
     Rare: { buffCount: [2, 3], debuffCount: [0, 1], buffRange: [10, 25], debuffRange: [5, 10] },
     Epic: { buffCount: [3, 4], debuffCount: [0, 1], buffRange: [15, 35], debuffRange: [0, 5] },
     Legendary: { buffCount: [4, 4], debuffCount: [0, 0], buffRange: [25, 50], debuffRange: [0, 0] },
+    Mythical: { buffCount: [5, 5], debuffCount: [0, 0], buffRange: [40, 75], debuffRange: [0, 0] },
+    Secret: { buffCount: [6, 6], debuffCount: [0, 0], buffRange: [60, 100], debuffRange: [0, 0] },
   };
   return configs[rarity] || configs.Common;
 };
@@ -575,6 +887,9 @@ const PET_POOL = [
   { name: 'Pebble', species: '🐢', rarity: 'Common', color: '#10b981', chance: 15 },
   { name: 'Starling', species: '🕊️', rarity: 'Rare', color: '#38bdf8', chance: 12 },
   { name: 'Ember', species: '🐲', rarity: 'Epic', color: '#ef4444', chance: 8 },
+  { name: 'Aether', species: '✨', rarity: 'Mythical', color: '#ec4899', chance: 2 },
+  { name: 'Void', species: '🌌', rarity: 'Mythical', color: '#8b5cf6', chance: 1.5 },
+  { name: 'Eclipse', species: '🌑', rarity: 'Secret', color: '#000000', chance: 0.5 },
 ];
 
 // Pet level system helpers
@@ -606,48 +921,42 @@ const scaleDebuffsForLevel = (debuffs, level) => {
 };
 
 const rollPetReward = (pityCounter = 0) => {
+  let selectedPet;
+  
   // If pity threshold reached, guarantee rare+ pet
   if (pityCounter >= PITY_THRESHOLD) {
     const rarePets = PET_POOL.filter(pet => 
-      pet.rarity === 'Rare' || pet.rarity === 'Epic' || pet.rarity === 'Legendary'
+      pet.rarity === 'Rare' || pet.rarity === 'Epic' || pet.rarity === 'Legendary' || 
+      pet.rarity === 'Mythical' || pet.rarity === 'Secret'
     );
-    const selectedPet = rarePets[Math.floor(Math.random() * rarePets.length)];
-    const { buffs, debuffs } = generatePetBuffs(selectedPet.rarity);
-    return { 
-      ...selectedPet, 
-      buffs, 
-      debuffs,
-      level: 1,
-      exp: 0,
-      expForNextLevel: getExpForLevel(2),
-    };
+    selectedPet = rarePets[Math.floor(Math.random() * rarePets.length)];
+  } else {
+    const totalChance = PET_POOL.reduce((sum, pet) => sum + pet.chance, 0);
+    let roll = Math.random() * totalChance;
+    for (const pet of PET_POOL) {
+      if (roll < pet.chance) {
+        selectedPet = pet;
+        break;
+      }
+      roll -= pet.chance;
+    }
+    if (!selectedPet) {
+      selectedPet = PET_POOL[0];
+    }
   }
   
-  const totalChance = PET_POOL.reduce((sum, pet) => sum + pet.chance, 0);
-  let roll = Math.random() * totalChance;
-  for (const pet of PET_POOL) {
-    if (roll < pet.chance) {
-      const { buffs, debuffs } = generatePetBuffs(pet.rarity);
-      return { 
-        ...pet, 
-        buffs, 
-        debuffs,
-        level: 1,
-        exp: 0,
-        expForNextLevel: getExpForLevel(2),
-      };
-    }
-    roll -= pet.chance;
-  }
-  const defaultPet = PET_POOL[0];
-  const { buffs, debuffs } = generatePetBuffs(defaultPet.rarity);
+  const { buffs, debuffs } = generatePetBuffs(selectedPet.rarity);
   return { 
-    ...defaultPet, 
+    id: `pet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Unique ID
+    ...selectedPet, 
     buffs, 
     debuffs,
     level: 1,
     exp: 0,
     expForNextLevel: getExpForLevel(2),
+    mood: 'Happy',
+    energy: 70,
+    hunger: 30,
   };
 };
 
@@ -714,44 +1023,60 @@ const appReducer = (state, action) => {
       return { ...state, gamification: action.payload };
 
     case ActionTypes.ADD_XP: {
-      const pet = state.gamification.pet;
       let xpGain = action.payload?.xp || 0;
       let coinGain = action.payload?.coins || 0;
       const energyBoost = action.payload?.energyBoost || 0;
       
-      // Apply pet buffs/debuffs
+      // Combine buffs/debuffs from all equipped pets
+      const equippedPets = (state.gamification.equippedPets || [])
+        .map(petId => state.gamification.petInventory?.find(p => p.id === petId))
+        .filter(Boolean);
+      
+      let totalXpBoost = 0;
+      let totalXpPenalty = 0;
+      let totalCoinBoost = 0;
+      let totalCoinPenalty = 0;
+      
+      equippedPets.forEach(pet => {
+        const scaledBuffs = scaleBuffsForLevel(pet.buffs || {}, pet.level || 1);
+        const scaledDebuffs = scaleDebuffsForLevel(pet.debuffs || {}, pet.level || 1);
+        totalXpBoost += scaledBuffs.xpBoost || 0;
+        totalXpPenalty += scaledDebuffs.xpPenalty || 0;
+        totalCoinBoost += scaledBuffs.coinBoost || 0;
+        totalCoinPenalty += scaledDebuffs.coinPenalty || 0;
+      });
+      
+      // Apply combined pet buffs/debuffs
       if (xpGain !== 0) {
-        const xpBoost = (pet.buffs?.xpBoost || 0);
-        const xpPenalty = (pet.debuffs?.xpPenalty || 0);
         if (xpGain > 0) {
-          // Positive gain: boost increases, penalty decreases
-          xpGain = Math.floor(xpGain * (1 + xpBoost / 100) * (1 - xpPenalty / 100));
+          xpGain = Math.floor(xpGain * (1 + totalXpBoost / 100) * (1 - totalXpPenalty / 100));
         } else {
-          // Negative gain (penalty): boost reduces penalty, penalty increases penalty
-          // For penalties, we reverse the effect - boost reduces penalty, penalty increases it
-          xpGain = Math.floor(xpGain * (1 - xpBoost / 100) * (1 + xpPenalty / 100));
+          xpGain = Math.floor(xpGain * (1 - totalXpBoost / 100) * (1 + totalXpPenalty / 100));
         }
       }
       if (coinGain !== 0) {
-        const coinBoost = (pet.buffs?.coinBoost || 0);
-        const coinPenalty = (pet.debuffs?.coinPenalty || 0);
         if (coinGain > 0) {
-          // Positive gain: boost increases, penalty decreases
-          coinGain = Math.floor(coinGain * (1 + coinBoost / 100) * (1 - coinPenalty / 100));
+          coinGain = Math.floor(coinGain * (1 + totalCoinBoost / 100) * (1 - totalCoinPenalty / 100));
         } else {
-          // Negative gain (penalty): boost reduces penalty, penalty increases penalty
-          coinGain = Math.floor(coinGain * (1 - coinBoost / 100) * (1 + coinPenalty / 100));
+          coinGain = Math.floor(coinGain * (1 - totalCoinBoost / 100) * (1 + totalCoinPenalty / 100));
         }
       }
+      
+      // Update energy for all equipped pets
+      const updatedPetInventory = state.gamification.petInventory?.map(pet => {
+        if (equippedPets.some(ep => ep.id === pet.id)) {
+          return {
+            ...pet,
+            mood: xpGain > 0 ? 'Excited' : pet.mood,
+            energy: Math.min(100, (pet.energy || 70) + energyBoost),
+          };
+        }
+        return pet;
+      }) || [];
       
       const newXp = Math.max(0, state.gamification.xp + xpGain);
       const newCoins = Math.max(0, state.gamification.coins + coinGain);
       const { level, currentLevelXp, nextLevelXp } = getLevelStats(newXp);
-      const updatedPet = {
-        ...state.gamification.pet,
-        mood: xpGain > 0 ? 'Excited' : state.gamification.pet.mood,
-        energy: Math.min(100, state.gamification.pet.energy + energyBoost),
-      };
       const updatedGamification = {
         ...state.gamification,
         xp: newXp,
@@ -759,7 +1084,7 @@ const appReducer = (state, action) => {
         level,
         xpForCurrentLevel: currentLevelXp,
         xpForNextLevel: nextLevelXp,
-        pet: updatedPet,
+        petInventory: updatedPetInventory,
         lastRewardReason: action.payload?.reason || null,
       };
       saveGamification(updatedGamification, userId);
@@ -769,46 +1094,105 @@ const appReducer = (state, action) => {
     case ActionTypes.UPDATE_PET: {
       const coinChange = action.payload?.coinsChange || 0;
       const petChanges = action.payload?.petChanges || {};
+      const petId = action.payload?.petId; // ID of pet to update
       const newCoins = Math.max(0, state.gamification.coins + coinChange);
-      const currentPet = state.gamification.pet;
-      const newLevel = petChanges.level ?? currentPet.level ?? 1;
-      const oldLevel = currentPet.level ?? 1;
       
-      const updatedPet = {
-        ...currentPet,
-        ...petChanges,
-        energy: Math.min(100, Math.max(0, petChanges.energy ?? currentPet.energy)),
-        hunger: Math.min(100, Math.max(0, petChanges.hunger ?? currentPet.hunger)),
-        // Ensure level/exp are initialized
-        level: newLevel,
-        exp: petChanges.exp ?? currentPet.exp ?? 0,
-        expForNextLevel: petChanges.expForNextLevel ?? currentPet.expForNextLevel ?? getExpForLevel(newLevel + 1),
-      };
+      // Update specific pet in inventory if petId provided, otherwise update all (for backward compatibility)
+      let updatedPetInventory = state.gamification.petInventory || [];
       
-      // Apply level-based scaling to buffs/debuffs
-      // Only scale if level changed OR if buffs/debuffs are being explicitly set
-      if (petChanges.level !== undefined && newLevel !== oldLevel) {
-        // Level changed - scale existing buffs/debuffs to new level
-        // Use the buffs/debuffs from petChanges if provided, otherwise use current ones
-        const buffsToScale = petChanges.buffs !== undefined ? petChanges.buffs : currentPet.buffs || {};
-        const debuffsToScale = petChanges.debuffs !== undefined ? petChanges.debuffs : currentPet.debuffs || {};
-        updatedPet.buffs = scaleBuffsForLevel(buffsToScale, newLevel);
-        updatedPet.debuffs = scaleDebuffsForLevel(debuffsToScale, newLevel);
-      } else if (petChanges.buffs !== undefined || petChanges.debuffs !== undefined) {
-        // Buffs/debuffs explicitly changed - scale them to current level
-        updatedPet.buffs = petChanges.buffs !== undefined 
-          ? scaleBuffsForLevel(petChanges.buffs, newLevel)
-          : (currentPet.buffs || {});
-        updatedPet.debuffs = petChanges.debuffs !== undefined
-          ? scaleDebuffsForLevel(petChanges.debuffs, newLevel)
-          : (currentPet.debuffs || {});
+      if (petId) {
+        updatedPetInventory = updatedPetInventory.map(pet => {
+          if (pet.id === petId) {
+            const newLevel = petChanges.level ?? pet.level ?? 1;
+            const oldLevel = pet.level ?? 1;
+            
+            const updatedPet = {
+              ...pet,
+              ...petChanges,
+              energy: Math.min(100, Math.max(0, petChanges.energy ?? pet.energy ?? 70)),
+              hunger: Math.min(100, Math.max(0, petChanges.hunger ?? pet.hunger ?? 30)),
+              level: newLevel,
+              exp: petChanges.exp ?? pet.exp ?? 0,
+              expForNextLevel: petChanges.expForNextLevel ?? pet.expForNextLevel ?? getExpForLevel(newLevel + 1),
+            };
+            
+            // Apply level-based scaling to buffs/debuffs
+            if (petChanges.level !== undefined && newLevel !== oldLevel) {
+              const buffsToScale = petChanges.buffs !== undefined ? petChanges.buffs : pet.buffs || {};
+              const debuffsToScale = petChanges.debuffs !== undefined ? petChanges.debuffs : pet.debuffs || {};
+              updatedPet.buffs = scaleBuffsForLevel(buffsToScale, newLevel);
+              updatedPet.debuffs = scaleDebuffsForLevel(debuffsToScale, newLevel);
+            } else if (petChanges.buffs !== undefined || petChanges.debuffs !== undefined) {
+              updatedPet.buffs = petChanges.buffs !== undefined 
+                ? scaleBuffsForLevel(petChanges.buffs, newLevel)
+                : (pet.buffs || {});
+              updatedPet.debuffs = petChanges.debuffs !== undefined
+                ? scaleDebuffsForLevel(petChanges.debuffs, newLevel)
+                : (pet.debuffs || {});
+            }
+            
+            return updatedPet;
+          }
+          return pet;
+        });
       }
-      // If neither level nor buffs/debuffs changed, keep existing values (already scaled)
       
       const updatedGamification = {
         ...state.gamification,
         coins: newCoins,
-        pet: updatedPet,
+        petInventory: updatedPetInventory,
+      };
+      saveGamification(updatedGamification, userId);
+      return { ...state, gamification: updatedGamification };
+    }
+
+    case ActionTypes.ADD_PET_TO_INVENTORY: {
+      const newPet = action.payload;
+      const updatedPetInventory = [...(state.gamification.petInventory || []), newPet];
+      const updatedGamification = {
+        ...state.gamification,
+        petInventory: updatedPetInventory,
+      };
+      saveGamification(updatedGamification, userId);
+      return { ...state, gamification: updatedGamification };
+    }
+
+    case ActionTypes.EQUIP_PET: {
+      const petId = action.payload;
+      const equippedPets = state.gamification.equippedPets || [];
+      
+      // Check if already equipped
+      if (equippedPets.includes(petId)) {
+        return state;
+      }
+      
+      // Check if we can equip more (max 3)
+      if (equippedPets.length >= 3) {
+        return state;
+      }
+      
+      // Check if pet exists in inventory
+      const pet = state.gamification.petInventory?.find(p => p.id === petId);
+      if (!pet) {
+        return state;
+      }
+      
+      const updatedEquippedPets = [...equippedPets, petId];
+      const updatedGamification = {
+        ...state.gamification,
+        equippedPets: updatedEquippedPets,
+      };
+      saveGamification(updatedGamification, userId);
+      return { ...state, gamification: updatedGamification };
+    }
+
+    case ActionTypes.UNEQUIP_PET: {
+      const petId = action.payload;
+      const equippedPets = state.gamification.equippedPets || [];
+      const updatedEquippedPets = equippedPets.filter(id => id !== petId);
+      const updatedGamification = {
+        ...state.gamification,
+        equippedPets: updatedEquippedPets,
       };
       saveGamification(updatedGamification, userId);
       return { ...state, gamification: updatedGamification };
@@ -967,17 +1351,69 @@ export const AppProvider = ({ children }) => {
     let gamification = getGamification(userId);
     let quests = getQuests(userId);
     
-    // Ensure pet has buffs/debuffs (for existing pets that don't have them)
-    if (gamification.pet && (!gamification.pet.buffs || !gamification.pet.debuffs)) {
-      const { buffs, debuffs } = generatePetBuffs(gamification.pet.rarity || 'Common');
-      gamification = {
-        ...gamification,
-        pet: {
-          ...gamification.pet,
-          buffs: gamification.pet.buffs || buffs,
-          debuffs: gamification.pet.debuffs || debuffs,
-        },
+    // Migrate from old pet system to inventory system
+    if (gamification.pet && !gamification.petInventory) {
+      const oldPet = gamification.pet;
+      // Create initial pet with ID if it doesn't have one
+      const migratedPet = {
+        id: oldPet.id || `pet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        ...oldPet,
+        level: oldPet.level || 1,
+        exp: oldPet.exp || 0,
+        expForNextLevel: oldPet.expForNextLevel || getExpForLevel(2),
+        buffs: oldPet.buffs || generatePetBuffs(oldPet.rarity || 'Common').buffs,
+        debuffs: oldPet.debuffs || generatePetBuffs(oldPet.rarity || 'Common').debuffs,
       };
+      gamification.petInventory = [migratedPet];
+      gamification.equippedPets = [migratedPet.id];
+      delete gamification.pet;
+      saveGamification(gamification, userId);
+    }
+    
+    // Ensure petInventory and equippedPets are initialized
+    if (!gamification.petInventory) {
+      // Create default pet
+      const defaultPet = {
+        id: `pet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: 'Pixel',
+        species: '🐾',
+        rarity: 'Common',
+        color: '#0ea5e9',
+        mood: 'Happy',
+        energy: 70,
+        hunger: 30,
+        level: 1,
+        exp: 0,
+        expForNextLevel: getExpForLevel(2),
+        ...generatePetBuffs('Common'),
+      };
+      gamification.petInventory = [defaultPet];
+      gamification.equippedPets = [defaultPet.id];
+      saveGamification(gamification, userId);
+    }
+    if (!gamification.equippedPets) {
+      gamification.equippedPets = [];
+    }
+    
+    // Ensure all pets in inventory have required fields
+    if (gamification.petInventory) {
+      gamification.petInventory = gamification.petInventory.map(pet => {
+        if (!pet.id) {
+          pet.id = `pet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        }
+        if (!pet.level) pet.level = 1;
+        if (pet.exp === undefined || pet.exp === null) pet.exp = 0;
+        if (!pet.expForNextLevel) pet.expForNextLevel = getExpForLevel(pet.level + 1);
+        if (!pet.buffs || !pet.debuffs) {
+          const { buffs, debuffs } = generatePetBuffs(pet.rarity || 'Common');
+          pet.buffs = pet.buffs || buffs;
+          pet.debuffs = pet.debuffs || debuffs;
+        }
+        // Scale buffs/debuffs to current level
+        pet.buffs = scaleBuffsForLevel(pet.buffs, pet.level);
+        pet.debuffs = scaleDebuffsForLevel(pet.debuffs, pet.level);
+        return pet;
+      });
       saveGamification(gamification, userId);
     }
     
@@ -1010,45 +1446,25 @@ export const AppProvider = ({ children }) => {
       gamification.currentProfileFrame = null;
     }
     
-    // Initialize pet level/exp if missing
-    if (!gamification.pet.level) {
-      gamification.pet.level = 1;
-    }
-    if (gamification.pet.exp === undefined || gamification.pet.exp === null) {
-      gamification.pet.exp = 0;
-    }
-    if (!gamification.pet.expForNextLevel) {
-      gamification.pet.expForNextLevel = getExpForLevel(gamification.pet.level + 1);
-    }
     
-    // Ensure buffs/debuffs are scaled to current level
-    if (gamification.pet.buffs) {
-      gamification.pet.buffs = scaleBuffsForLevel(gamification.pet.buffs, gamification.pet.level);
-    }
-    if (gamification.pet.debuffs) {
-      gamification.pet.debuffs = scaleDebuffsForLevel(gamification.pet.debuffs, gamification.pet.level);
-    }
+    // Initialize or reset daily/weekly quests (GMT+7 timezone)
+    const lastDailyReset = quests.daily?.lastReset || null;
+    const lastWeeklyReset = quests.weekly?.lastReset || null;
     
-    // Initialize or reset daily/weekly quests
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const lastDailyReset = quests.daily?.lastReset ? new Date(quests.daily.lastReset) : null;
-    const lastWeeklyReset = quests.weekly?.lastReset ? new Date(quests.weekly.lastReset) : null;
-    
-    // Reset daily quests if needed
-    if (!lastDailyReset || lastDailyReset < today) {
+    // Reset daily quests if needed (12:00 AM GMT+7)
+    if (shouldResetDaily(lastDailyReset)) {
       const dailyQuests = generateDailyQuests().map(q => ({ ...q, completed: false }));
+      const resetTime = getGMT7Midnight().toISOString();
       dispatch({ type: ActionTypes.RESET_DAILY_QUESTS, payload: dailyQuests, userId });
-      quests.daily = { lastReset: today.toISOString(), quests: dailyQuests };
+      quests.daily = { lastReset: resetTime, quests: dailyQuests };
     }
     
-    // Reset weekly quests if needed (every Monday)
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - (today.getDay() + 6) % 7);
-    if (!lastWeeklyReset || lastWeeklyReset < monday) {
+    // Reset weekly quests if needed (12:00 AM GMT+7 Monday)
+    if (shouldResetWeekly(lastWeeklyReset)) {
       const weeklyQuests = generateWeeklyQuests().map(q => ({ ...q, completed: false }));
+      const resetTime = getGMT7Monday().toISOString();
       dispatch({ type: ActionTypes.RESET_WEEKLY_QUESTS, payload: weeklyQuests, userId });
-      quests.weekly = { lastReset: monday.toISOString(), quests: weeklyQuests };
+      quests.weekly = { lastReset: resetTime, quests: weeklyQuests };
     }
     
     // Initialize / migrate achievements
@@ -1089,6 +1505,37 @@ export const AppProvider = ({ children }) => {
     document.documentElement.style.setProperty('--box-transparency', boxTransparency);
     document.documentElement.style.setProperty('--box-transparency-dark', (boxTransparency * 1.5).toString());
   }, [userId]);
+
+  // Automatic quest reset timer (checks every minute)
+  useEffect(() => {
+    const checkQuestResets = () => {
+      const currentQuests = getQuests(userId);
+      const lastDailyReset = currentQuests.daily?.lastReset || null;
+      const lastWeeklyReset = currentQuests.weekly?.lastReset || null;
+      
+      // Check and reset daily quests if needed
+      if (shouldResetDaily(lastDailyReset)) {
+        const dailyQuests = generateDailyQuests().map(q => ({ ...q, completed: false }));
+        const resetTime = getGMT7Midnight().toISOString();
+        dispatch({ type: ActionTypes.RESET_DAILY_QUESTS, payload: dailyQuests, userId });
+      }
+      
+      // Check and reset weekly quests if needed
+      if (shouldResetWeekly(lastWeeklyReset)) {
+        const weeklyQuests = generateWeeklyQuests().map(q => ({ ...q, completed: false }));
+        const resetTime = getGMT7Monday().toISOString();
+        dispatch({ type: ActionTypes.RESET_WEEKLY_QUESTS, payload: weeklyQuests, userId });
+      }
+    };
+    
+    // Check immediately
+    checkQuestResets();
+    
+    // Check every minute
+    const interval = setInterval(checkQuestResets, 60000);
+    
+    return () => clearInterval(interval);
+  }, [userId, dispatch]);
 
   // Action creators
   const actions = {
@@ -1149,6 +1596,14 @@ export const AppProvider = ({ children }) => {
       dispatch({ type: ActionTypes.SET_ACTIVE_TAB, payload: tab });
     },
 
+    addXP: (payload) => {
+      dispatch({
+        type: ActionTypes.ADD_XP,
+        payload: payload,
+        userId,
+      });
+    },
+
     rewardFocusSession: (durationMinutes) => {
       // Scaling algorithm: longer sessions = higher rewards per minute
       // Base rate: 1 XP per minute, 0.2 coins per minute
@@ -1180,7 +1635,16 @@ export const AppProvider = ({ children }) => {
       });
     },
 
-    feedPet: (foodId = 'basic', quantity = 1) => {
+    feedPet: (petId, foodId = 'basic', quantity = 1) => {
+      if (!petId) {
+        return { success: false, message: 'Please select a pet to feed.' };
+      }
+      
+      const pet = state.gamification.petInventory?.find(p => p.id === petId);
+      if (!pet) {
+        return { success: false, message: 'Pet not found in inventory.' };
+      }
+      
       const inventory = state.gamification.inventory || {};
       const foodQuantity = inventory[foodId] || 0;
       
@@ -1210,44 +1674,60 @@ export const AppProvider = ({ children }) => {
         delete newInventory[foodId];
       }
       
-      // Update inventory first
-      dispatch({ type: ActionTypes.UPDATE_INVENTORY, payload: newInventory, userId });
+      // Update feed count
+      const feedCount = (state.gamification.feedCount || 0) + actualQuantity;
       
-      // Then update pet stats
+      // Update pet stats
       dispatch({
         type: ActionTypes.UPDATE_PET,
         payload: {
+          petId,
           petChanges: {
-            hunger: Math.max(0, state.gamification.pet.hunger - food.hungerReduction * actualQuantity),
-            energy: Math.min(100, state.gamification.pet.energy + food.energyBoost * actualQuantity),
+            hunger: Math.max(0, pet.hunger - food.hungerReduction * actualQuantity),
+            energy: Math.min(100, (pet.energy || 70) + food.energyBoost * actualQuantity),
             mood: food.mood,
           },
         },
         userId,
       });
       
-      // Update feed count
-      const feedCount = (state.gamification.feedCount || 0) + actualQuantity;
+      dispatch({ type: ActionTypes.UPDATE_INVENTORY, payload: newInventory, userId });
+      dispatch({
+        type: ActionTypes.UPDATE_PET,
+        payload: {
+          coinsChange: 0, // No coin change, just update feed count
+        },
+        userId,
+      });
+      
+      // Update feed count separately
       const updatedGamification = {
         ...state.gamification,
         feedCount,
-        inventory: newInventory, // Ensure inventory is synced
       };
       saveGamification(updatedGamification, userId);
       dispatch({ type: ActionTypes.SET_GAMIFICATION, payload: updatedGamification, userId });
       
-      // Check feeding achievements (detailed logic handled in Profile useEffect)
-      
       const itemLabel = actualQuantity === 1 ? 'a treat' : `${actualQuantity} treats`;
-      return { success: true, message: `${state.gamification.pet.name} enjoyed ${itemLabel}!` };
+      return { success: true, message: `${pet.name} enjoyed ${itemLabel}!` };
     },
 
     buyFood: (foodItem) => {
-      const pet = state.gamification.pet;
-      // Apply discount buff
-      const discount = pet.buffs?.discount || 0;
-      const priceIncrease = pet.debuffs?.priceIncrease || 0;
-      const finalCost = Math.max(1, Math.floor(foodItem.cost * (1 - discount / 100) * (1 + priceIncrease / 100)));
+      // Apply discount buff from all equipped pets
+      const equippedPets = (state.gamification.equippedPets || [])
+        .map(petId => state.gamification.petInventory?.find(p => p.id === petId))
+        .filter(Boolean);
+      
+      let totalDiscount = 0;
+      let totalPriceIncrease = 0;
+      equippedPets.forEach(pet => {
+        const scaledBuffs = scaleBuffsForLevel(pet.buffs || {}, pet.level || 1);
+        const scaledDebuffs = scaleDebuffsForLevel(pet.debuffs || {}, pet.level || 1);
+        totalDiscount += scaledBuffs.discount || 0;
+        totalPriceIncrease += scaledDebuffs.priceIncrease || 0;
+      });
+      
+      const finalCost = Math.max(1, Math.floor(foodItem.cost * (1 - totalDiscount / 100) * (1 + totalPriceIncrease / 100)));
       
       if (state.gamification.coins < finalCost) {
         return { success: false, message: `Not enough coins! You need ${finalCost} coins.` };
@@ -1271,13 +1751,42 @@ export const AppProvider = ({ children }) => {
       return { success: true, message: `Added ${foodItem.name} to inventory!` };
     },
 
-    playWithPet: () => {
-      const currentPet = state.gamification.pet;
+    playWithPet: (petId) => {
+      if (!petId) {
+        return { success: false, message: 'Please select a pet to play with.' };
+      }
+      
+      const currentPet = state.gamification.petInventory?.find(p => p.id === petId);
+      if (!currentPet) {
+        return { success: false, message: 'Pet not found in inventory.' };
+      }
+      
+      const currentEnergy = currentPet.energy || 0;
+      
+      // Check if pet has energy to play
+      if (currentEnergy <= 0) {
+        return { 
+          success: false, 
+          message: `${currentPet.name} is too tired to play! Feed them or wait for energy to recover.` 
+        };
+      }
+      
       const currentLevel = currentPet.level || 1;
       const currentExp = currentPet.exp || 0;
+      const currentHunger = currentPet.hunger || 0;
       
       // Grant exp for playing (base 10 exp, scales with level)
-      const expGain = 10 + Math.floor(currentLevel * 0.5);
+      let expGain = 10 + Math.floor(currentLevel * 0.5);
+      
+      // Apply exp penalty if pet is hungry (>50%) or has low energy (<50%)
+      const isHungry = currentHunger > 50;
+      const hasLowEnergy = currentEnergy < 50;
+      
+      if (isHungry || hasLowEnergy) {
+        // Reduce exp gain by 50% if either condition is met
+        expGain = Math.floor(expGain * 0.5);
+      }
+      
       let newExp = currentExp + expGain;
       let newLevel = currentLevel;
       let leveledUp = false;
@@ -1334,22 +1843,35 @@ export const AppProvider = ({ children }) => {
       dispatch({
         type: ActionTypes.UPDATE_PET,
         payload: {
+          petId,
           petChanges,
         },
         userId,
       });
       
-      const message = leveledUp 
-        ? `${currentPet.name} loved playing and leveled up to level ${newLevel}! 🎉`
-        : `${currentPet.name} loved playing! (+${expGain} exp)`;
+      let message = '';
+      if (leveledUp) {
+        message = `${currentPet.name} loved playing and leveled up to level ${newLevel}! 🎉`;
+      } else {
+        if (isHungry || hasLowEnergy) {
+          const reasons = [];
+          if (isHungry) reasons.push('hungry');
+          if (hasLowEnergy) reasons.push('low energy');
+          message = `${currentPet.name} played but gained reduced exp (+${expGain} exp) due to being ${reasons.join(' and ')}.`;
+        } else {
+          message = `${currentPet.name} loved playing! (+${expGain} exp)`;
+        }
+      }
       
       return { success: true, message, leveledUp, newLevel };
     },
 
-    renamePet: (name) => {
+    renamePet: (petId, name) => {
+      if (!petId) return;
       dispatch({
         type: ActionTypes.UPDATE_PET,
         payload: {
+          petId,
           petChanges: {
             name: name || 'Pixel',
           },
@@ -1359,11 +1881,21 @@ export const AppProvider = ({ children }) => {
     },
 
     spinForPet: () => {
-      const pet = state.gamification.pet;
-      // Apply luck buff/debuff to spin cost (luck affects chance, but we can also affect cost)
-      const luckBoost = pet.buffs?.luckBoost || 0;
-      const luckPenalty = pet.debuffs?.luckPenalty || 0;
-      const finalCost = Math.max(1, Math.floor(PET_SPIN_COST * (1 - luckBoost / 100) * (1 + luckPenalty / 100)));
+      // Combine luck from all equipped pets
+      const equippedPets = (state.gamification.equippedPets || [])
+        .map(petId => state.gamification.petInventory?.find(p => p.id === petId))
+        .filter(Boolean);
+      
+      let totalLuckBoost = 0;
+      let totalLuckPenalty = 0;
+      equippedPets.forEach(pet => {
+        const scaledBuffs = scaleBuffsForLevel(pet.buffs || {}, pet.level || 1);
+        const scaledDebuffs = scaleDebuffsForLevel(pet.debuffs || {}, pet.level || 1);
+        totalLuckBoost += scaledBuffs.luckBoost || 0;
+        totalLuckPenalty += scaledDebuffs.luckPenalty || 0;
+      });
+      
+      const finalCost = Math.max(1, Math.floor(PET_SPIN_COST * (1 - totalLuckBoost / 100) * (1 + totalLuckPenalty / 100)));
       
       if (state.gamification.coins < finalCost) {
         return { success: false, message: `You need ${finalCost} coins to spin.` };
@@ -1373,10 +1905,18 @@ export const AppProvider = ({ children }) => {
       const reward = rollPetReward(pityCounter);
       
       // Update pity counter
-      const isRarePlus = reward.rarity === 'Rare' || reward.rarity === 'Epic' || reward.rarity === 'Legendary';
+      const isRarePlus = reward.rarity === 'Rare' || reward.rarity === 'Epic' || reward.rarity === 'Legendary' || 
+                        reward.rarity === 'Mythical' || reward.rarity === 'Secret';
       const newPityCounter = isRarePlus ? 0 : pityCounter + 1;
       
-      // Deduct coins and update pity, but don't switch pet yet
+      // Add pet to inventory
+      dispatch({
+        type: ActionTypes.ADD_PET_TO_INVENTORY,
+        payload: reward,
+        userId,
+      });
+      
+      // Deduct coins and update pity
       dispatch({
         type: ActionTypes.UPDATE_PET,
         payload: {
@@ -1394,48 +1934,58 @@ export const AppProvider = ({ children }) => {
           energy: 85,
           hunger: 20,
         },
-        oldPet: state.gamification.pet,
       };
     },
     
-    switchToNewPet: (newPet) => {
+    equipPet: (petId) => {
       dispatch({
-        type: ActionTypes.UPDATE_PET,
-        payload: {
-          petChanges: {
-            name: newPet.name,
-            species: newPet.species,
-            rarity: newPet.rarity,
-            color: newPet.color,
-            buffs: newPet.buffs,
-            debuffs: newPet.debuffs,
-            mood: newPet.mood || 'Ecstatic',
-            energy: newPet.energy || 85,
-            hunger: newPet.hunger || 20,
-            // Reset level/exp for new pet
-            level: newPet.level || 1,
-            exp: newPet.exp || 0,
-            expForNextLevel: newPet.expForNextLevel || getExpForLevel(2),
-          },
-        },
+        type: ActionTypes.EQUIP_PET,
+        payload: petId,
         userId,
       });
     },
     
-    // Helper function to get pet's effective food cost
+    unequipPet: (petId) => {
+      dispatch({
+        type: ActionTypes.UNEQUIP_PET,
+        payload: petId,
+        userId,
+      });
+    },
+    
+    // Helper function to get pet's effective food cost (from all equipped pets)
     getFoodCost: (baseCost) => {
-      const pet = state.gamification.pet;
-      const discount = pet.buffs?.discount || 0;
-      const priceIncrease = pet.debuffs?.priceIncrease || 0;
-      return Math.max(1, Math.floor(baseCost * (1 - discount / 100) * (1 + priceIncrease / 100)));
+      const equippedPets = (state.gamification.equippedPets || [])
+        .map(petId => state.gamification.petInventory?.find(p => p.id === petId))
+        .filter(Boolean);
+      
+      let totalDiscount = 0;
+      let totalPriceIncrease = 0;
+      equippedPets.forEach(pet => {
+        const scaledBuffs = scaleBuffsForLevel(pet.buffs || {}, pet.level || 1);
+        const scaledDebuffs = scaleDebuffsForLevel(pet.debuffs || {}, pet.level || 1);
+        totalDiscount += scaledBuffs.discount || 0;
+        totalPriceIncrease += scaledDebuffs.priceIncrease || 0;
+      });
+      
+      return Math.max(1, Math.floor(baseCost * (1 - totalDiscount / 100) * (1 + totalPriceIncrease / 100)));
     },
     
     // Helper function to get pet's effective spin cost
     getSpinCost: () => {
-      const pet = state.gamification.pet;
-      const luckBoost = pet.buffs?.luckBoost || 0;
-      const luckPenalty = pet.debuffs?.luckPenalty || 0;
-      return Math.max(1, Math.floor(PET_SPIN_COST * (1 - luckBoost / 100) * (1 + luckPenalty / 100)));
+      const equippedPets = (state.gamification.equippedPets || [])
+        .map(petId => state.gamification.petInventory?.find(p => p.id === petId))
+        .filter(Boolean);
+      
+      let totalLuckBoost = 0;
+      let totalLuckPenalty = 0;
+      equippedPets.forEach(pet => {
+        const scaledBuffs = scaleBuffsForLevel(pet.buffs || {}, pet.level || 1);
+        const scaledDebuffs = scaleDebuffsForLevel(pet.debuffs || {}, pet.level || 1);
+        totalLuckBoost += scaledBuffs.luckBoost || 0;
+        totalLuckPenalty += scaledDebuffs.luckPenalty || 0;
+      });
+      return Math.max(1, Math.floor(PET_SPIN_COST * (1 - totalLuckBoost / 100) * (1 + totalLuckPenalty / 100)));
     },
 
     // Title management
@@ -1540,6 +2090,8 @@ export const AppProvider = ({ children }) => {
           newProgress = currentProgress + value;
         } else if (category === 'level') {
           newProgress = Math.max(currentProgress, value); // level is absolute
+        } else if (category === 'achievement') {
+          newProgress = Math.max(currentProgress, value); // achievement is absolute
         }
 
         if (newProgress >= quest.target) {
@@ -1569,6 +2121,14 @@ export const AppProvider = ({ children }) => {
         }
       });
     },
+
+    resetDailyQuests: (quests) => {
+      dispatch({ type: ActionTypes.RESET_DAILY_QUESTS, payload: quests, userId });
+    },
+
+    resetWeeklyQuests: (quests) => {
+      dispatch({ type: ActionTypes.RESET_WEEKLY_QUESTS, payload: quests, userId });
+    },
   };
 
   return (
@@ -1586,4 +2146,8 @@ export const useApp = () => {
   }
   return context;
 };
+
+// Export quest generation functions for dev panel
+export { generateDailyQuests, generateWeeklyQuests };
+
 

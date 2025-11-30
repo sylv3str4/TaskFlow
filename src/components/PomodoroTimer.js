@@ -232,7 +232,7 @@ const PomodoroTimer = () => {
       {/* Timer Display */}
       <div className="card text-center">
         {/* Session Type Selector */}
-        <div className="flex justify-center gap-2 mb-6">
+        <div className="flex justify-center gap-3 mb-6">
           {[
             { type: 'work', label: 'Work' },
             { type: 'shortBreak', label: 'Short Break' },
@@ -242,12 +242,11 @@ const PomodoroTimer = () => {
               key={type}
               onClick={() => handleSessionChange(type)}
               disabled={isRunning}
-              className={`px-4 py-2 rounded-2xl font-medium transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+              className={`px-6 py-2.5 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 active:scale-95 ${
                 sessionType === type
-                  ? 'text-white shadow-lg'
-                  : 'bg-white/70 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 shadow hover:shadow-md'
+                  ? 'btn-primary text-white shadow-lg'
+                  : 'btn-secondary'
               } ${isRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
-              style={sessionType === type ? getSessionColor(type) : {}}
             >
               {label}
             </button>

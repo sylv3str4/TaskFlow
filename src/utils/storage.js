@@ -115,20 +115,8 @@ const defaultGamification = {
   unlockedThemes: ['default'],
   currentProfileFrame: null,
   unlockedProfileFrames: [],
-  pet: {
-    name: 'Pixel',
-    species: '🐾',
-    rarity: 'Common',
-    color: '#0ea5e9',
-    mood: 'Happy',
-    energy: 70,
-    hunger: 30,
-    level: 1,
-    exp: 0,
-    expForNextLevel: 50,
-    buffs: { xpBoost: 10, coinBoost: 5 },
-    debuffs: { xpPenalty: 5 },
-  },
+  petInventory: [],
+  equippedPets: [],
   lastRewardReason: null,
 };
 

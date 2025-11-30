@@ -24,6 +24,102 @@ const Quests = () => {
   const { quests, gamification, tasks, studyLogs, checkQuestProgress } = useApp();
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('daily');
+  const [dailyResetCountdown, setDailyResetCountdown] = useState('');
+  const [weeklyResetCountdown, setWeeklyResetCountdown] = useState('');
+
+  // GMT+7 timezone helpers - work entirely in UTC
+  const getGMT7Timestamp = () => {
+    const now = new Date();
+    const utcTimestamp = now.getTime() + (now.getTimezoneOffset() * 60000);
+    return utcTimestamp + (7 * 3600000);
+  };
+
+  const getGMT7DateComponents = () => {
+    const gmt7Timestamp = getGMT7Timestamp();
+    const utcTimestamp = gmt7Timestamp - (7 * 3600000);
+    const utcDate = new Date(utcTimestamp);
+    return {
+      year: utcDate.getUTCFullYear(),
+      month: utcDate.getUTCMonth(),
+      date: utcDate.getUTCDate(),
+      day: utcDate.getUTCDay(),
+      hours: utcDate.getUTCHours(),
+    };
+  };
+
+  const getNextDailyReset = () => {
+    const { year, month, date } = getGMT7DateComponents();
+    
+    const utcTomorrowMidnight = Date.UTC(year, month, date + 1, 0, 0, 0, 0);
+    const gmt7TomorrowMidnight = utcTomorrowMidnight - (7 * 3600000);
+    const nextReset = new Date(gmt7TomorrowMidnight);
+    
+    const now = new Date();
+    if (nextReset.getTime() <= now.getTime()) {
+      const utcDayAfterMidnight = Date.UTC(year, month, date + 2, 0, 0, 0, 0);
+      return new Date(utcDayAfterMidnight - (7 * 3600000));
+    }
+    return nextReset;
+  };
+
+  const getNextWeeklyReset = () => {
+    const { year, month, date, day, hours } = getGMT7DateComponents();
+    
+    let daysUntilMonday;
+    if (day === 0) {
+      daysUntilMonday = 1;
+    } else if (day === 1) {
+      daysUntilMonday = 7;
+    } else {
+      daysUntilMonday = 8 - day;
+    }
+    
+    const mondayDate = date + daysUntilMonday;
+    const utcMondayMidnight = Date.UTC(year, month, mondayDate, 0, 0, 0, 0);
+    const gmt7MondayMidnight = utcMondayMidnight - (7 * 3600000);
+    let nextReset = new Date(gmt7MondayMidnight);
+    
+    const now = new Date();
+    if (nextReset.getTime() <= now.getTime()) {
+      const utcNextMondayMidnight = Date.UTC(year, month, mondayDate + 7, 0, 0, 0, 0);
+      nextReset = new Date(utcNextMondayMidnight - (7 * 3600000));
+    }
+    return nextReset;
+  };
+
+  const formatCountdown = (targetDate) => {
+    const now = new Date();
+    const diff = targetDate.getTime() - now.getTime();
+    
+    if (diff <= 0) return 'Resetting...';
+    
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${seconds}s`;
+    } else {
+      return `${seconds}s`;
+    }
+  };
+
+  // Update countdown timers
+  useEffect(() => {
+    const updateCountdowns = () => {
+      const nextDailyReset = getNextDailyReset();
+      const nextWeeklyReset = getNextWeeklyReset();
+      setDailyResetCountdown(formatCountdown(nextDailyReset));
+      setWeeklyResetCountdown(formatCountdown(nextWeeklyReset));
+    };
+    
+    updateCountdowns();
+    const interval = setInterval(updateCountdowns, 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   // Calculate and update quest progress
   useEffect(() => {
@@ -140,12 +236,56 @@ const Quests = () => {
       }
     }
 
-    if (gamification?.pet?.rarity === 'Legendary') {
+    if (gamification?.pet?.rarity === 'Legendary' || gamification?.pet?.rarity === 'Mythical' || gamification?.pet?.rarity === 'Secret') {
       const legendaryQuest = quests.achievements?.find(q => q.id === 'achieve_get_legendary_pet' && !q.completed);
       if (legendaryQuest) {
         const currentProgress = quests.progress?.[legendaryQuest.id] || 0;
         if (currentProgress < 1) {
           checkQuestProgress('pet', 1);
+        }
+      }
+    }
+    if (gamification?.pet?.rarity === 'Mythical' || gamification?.pet?.rarity === 'Secret') {
+      const mythicalQuest = quests.achievements?.find(q => q.id === 'achieve_get_mythical_pet' && !q.completed);
+      if (mythicalQuest) {
+        const currentProgress = quests.progress?.[mythicalQuest.id] || 0;
+        if (currentProgress < 1) {
+          checkQuestProgress('pet', 1);
+        }
+      }
+    }
+    if (gamification?.pet?.rarity === 'Secret') {
+      const secretQuest = quests.achievements?.find(q => q.id === 'achieve_get_secret_pet' && !q.completed);
+      if (secretQuest) {
+        const currentProgress = quests.progress?.[secretQuest.id] || 0;
+        if (currentProgress < 1) {
+          checkQuestProgress('pet', 1);
+        }
+      }
+    }
+
+    // Check guaranteed daily quest (complete all daily quests)
+    const dailyCompleteQuest = quests.daily?.quests?.find(q => q.id === 'daily_complete_daily_quests' && !q.completed);
+    if (dailyCompleteQuest) {
+      const otherDailyQuests = quests.daily?.quests?.filter(q => q.id !== 'daily_complete_daily_quests') || [];
+      const allOtherCompleted = otherDailyQuests.length > 0 && otherDailyQuests.every(q => q.completed);
+      if (allOtherCompleted) {
+        const currentProgress = quests.progress?.[dailyCompleteQuest.id] || 0;
+        if (currentProgress < 1) {
+          checkQuestProgress('achievement', 1);
+        }
+      }
+    }
+
+    // Check guaranteed weekly quest (complete all weekly quests)
+    const weeklyCompleteQuest = quests.weekly?.quests?.find(q => q.id === 'weekly_complete_weekly_quests' && !q.completed);
+    if (weeklyCompleteQuest) {
+      const otherWeeklyQuests = quests.weekly?.quests?.filter(q => q.id !== 'weekly_complete_weekly_quests') || [];
+      const allOtherCompleted = otherWeeklyQuests.length > 0 && otherWeeklyQuests.every(q => q.completed);
+      if (allOtherCompleted) {
+        const currentProgress = quests.progress?.[weeklyCompleteQuest.id] || 0;
+        if (currentProgress < 1) {
+          checkQuestProgress('achievement', 1);
         }
       }
     }
@@ -307,6 +447,21 @@ const Quests = () => {
           <p className="text-gray-600 dark:text-gray-400 mt-1">
             Complete quests to earn XP and coins
           </p>
+        </div>
+      </div>
+
+      {/* Reset Timers */}
+      <div className="card p-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 text-sm">
+          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+            <Calendar size={16} />
+            <span>Daily reset: <span className="font-semibold text-primary-600 dark:text-primary-400">{dailyResetCountdown}</span></span>
+          </div>
+          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+            <Clock size={16} />
+            <span>Weekly reset: <span className="font-semibold text-primary-600 dark:text-primary-400">{weeklyResetCountdown}</span></span>
+          </div>
+          <span className="text-xs text-gray-500 dark:text-gray-500 ml-auto">(GMT+7)</span>
         </div>
       </div>
 

@@ -18,6 +18,7 @@ import UserProfile from './components/UserProfile';
 import PetSanctuary from './components/PetSanctuary';
 import Quests from './components/Quests';
 import Shop from './components/Shop';
+import DevPanel from './components/DevPanel';
 import { useApp } from './context/AppContext';
 import { getThemeColors } from './utils/theme';
 
@@ -155,6 +156,7 @@ const AppContent = () => {
           </div>
         </div>
       </main>
+      <DevPanel />
     </div>
   );
 };

@@ -3,7 +3,7 @@
  * Dedicated page for virtual pet collection and spins
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 import { getThemeColors } from '../utils/theme';
@@ -24,6 +24,8 @@ import {
   Star,
   Backpack,
   X,
+  Plus,
+  Check,
 } from 'lucide-react';
 import { FOOD_ITEMS } from './Shop';
 
@@ -32,30 +34,96 @@ const rarityStyles = {
   Rare: 'text-blue-500 bg-blue-100 dark:bg-blue-900/40',
   Epic: 'text-purple-500 bg-purple-100 dark:bg-purple-900/40',
   Legendary: 'text-yellow-500 bg-yellow-100 dark:bg-yellow-900/30',
+  Mythical: 'text-pink-500 bg-pink-100 dark:bg-pink-900/30',
+  Secret: 'text-gray-900 dark:text-gray-100 bg-gray-800 dark:bg-gray-900 border-2 border-gray-400 dark:border-gray-500',
 };
 
 const rarityChances = [
+  { rarity: 'Secret', chance: 0.5, color: 'text-gray-900 dark:text-gray-100' },
+  { rarity: 'Mythical', chance: 3.5, color: 'text-pink-500' },
   { rarity: 'Legendary', chance: 5, color: 'text-yellow-500' },
   { rarity: 'Epic', chance: 18, color: 'text-purple-500' },
   { rarity: 'Rare', chance: 30, color: 'text-blue-500' },
-  { rarity: 'Common', chance: 47, color: 'text-gray-500' },
+  { rarity: 'Common', chance: 43, color: 'text-gray-500' },
 ];
 
 const SPIN_COST = 25;
 const PITY_THRESHOLD = 10;
 
+// Helper function to scale buffs/debuffs for level (same as in AppContext)
+const scaleBuffsForLevel = (buffs, level) => {
+  if (!buffs || level <= 1) return buffs || {};
+  const multiplier = Math.min(1 + (level - 1) * 0.02, 2);
+  const scaled = {};
+  for (const [key, value] of Object.entries(buffs)) {
+    scaled[key] = Math.floor(value * multiplier);
+  }
+  return scaled;
+};
+
+const scaleDebuffsForLevel = (debuffs, level) => {
+  if (!debuffs || level <= 1) return debuffs || {};
+  const multiplier = Math.max(1 - (level - 1) * 0.01, 0.5);
+  const scaled = {};
+  for (const [key, value] of Object.entries(debuffs)) {
+    scaled[key] = Math.floor(value * multiplier);
+  }
+  return scaled;
+};
+
+// Helper to calculate combined buffs from all equipped pets
+const getCombinedBuffs = (equippedPets) => {
+  const combinedBuffs = {
+    xpBoost: 0,
+    coinBoost: 0,
+    discount: 0,
+    luckBoost: 0,
+  };
+  const combinedDebuffs = {
+    xpPenalty: 0,
+    coinPenalty: 0,
+    priceIncrease: 0,
+    luckPenalty: 0,
+  };
+
+  equippedPets.forEach(pet => {
+    const scaledBuffs = scaleBuffsForLevel(pet.buffs || {}, pet.level || 1);
+    const scaledDebuffs = scaleDebuffsForLevel(pet.debuffs || {}, pet.level || 1);
+    
+    combinedBuffs.xpBoost += scaledBuffs.xpBoost || 0;
+    combinedBuffs.coinBoost += scaledBuffs.coinBoost || 0;
+    combinedBuffs.discount += scaledBuffs.discount || 0;
+    combinedBuffs.luckBoost += scaledBuffs.luckBoost || 0;
+    
+    combinedDebuffs.xpPenalty += scaledDebuffs.xpPenalty || 0;
+    combinedDebuffs.coinPenalty += scaledDebuffs.coinPenalty || 0;
+    combinedDebuffs.priceIncrease += scaledDebuffs.priceIncrease || 0;
+    combinedDebuffs.luckPenalty += scaledDebuffs.luckPenalty || 0;
+  });
+
+  return { buffs: combinedBuffs, debuffs: combinedDebuffs };
+};
+
 const PetSanctuary = () => {
-  const { gamification, spinForPet, feedPet, playWithPet, switchToNewPet, getFoodCost, getSpinCost, setActiveTab } = useApp();
+  const { gamification, spinForPet, feedPet, playWithPet, equipPet, unequipPet, getFoodCost, getSpinCost, setActiveTab } = useApp();
   const { success, error } = useToast();
   const [isSpinning, setIsSpinning] = useState(false);
   const [lastReward, setLastReward] = useState(null);
-  const [showPetSelection, setShowPetSelection] = useState(false);
-  const [newPet, setNewPet] = useState(null);
-  const [oldPet, setOldPet] = useState(null);
-  const [showBackpack, setShowBackpack] = useState(false);
+  const [showInventory, setShowInventory] = useState(false);
+  const [inventoryTab, setInventoryTab] = useState('pets'); // 'pets' or 'food'
   const [showFeedModal, setShowFeedModal] = useState(false);
+  const [selectedPetId, setSelectedPetId] = useState(null);
   const [selectedFoodId, setSelectedFoodId] = useState(null);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
+
+  const petInventory = gamification.petInventory || [];
+  const equippedPets = useMemo(() => {
+    return (gamification.equippedPets || [])
+      .map(id => petInventory.find(p => p.id === id))
+      .filter(Boolean);
+  }, [gamification.equippedPets, petInventory]);
+
+  const combinedEffects = useMemo(() => getCombinedBuffs(equippedPets), [equippedPets]);
 
   const handleSpin = () => {
     if (isSpinning) return;
@@ -68,47 +136,33 @@ const PetSanctuary = () => {
     setTimeout(() => {
       const result = spinForPet();
       if (result.success) {
-        setNewPet(result.reward);
-        setOldPet(result.oldPet);
-        setShowPetSelection(true);
         setLastReward(result.reward);
-        // Check if pity was used (pity counter would have been reset if rare+ was obtained)
         const wasPityUsed = (gamification.pityCounter || 0) >= PITY_THRESHOLD;
         if (wasPityUsed) {
-          success(`Pity system activated! Guaranteed rare+ pet!`);
+          success(`Pity system activated! Guaranteed rare+ pet! You got ${result.reward.name}!`);
         } else {
-          success(`You got ${result.reward.name}! Choose to keep or switch.`);
+          success(`You got ${result.reward.name}! Check your inventory.`);
         }
+        setInventoryTab('pets');
+        setShowInventory(true);
       } else {
         error(result.message);
       }
       setIsSpinning(false);
     }, 1200);
   };
-  
-  const handleKeepOldPet = () => {
-    setShowPetSelection(false);
-    setNewPet(null);
-    setOldPet(null);
-    success('Kept your current pet!');
-  };
-  
-  const handleSwitchToNewPet = () => {
-    if (newPet) {
-      switchToNewPet(newPet);
-      setShowPetSelection(false);
-      setNewPet(null);
-      setOldPet(null);
-      success(`Switched to ${newPet.name}!`);
-    }
-  };
 
   const inventory = gamification.inventory || {};
   const hasFood = Object.keys(inventory).some(id => (inventory[id] || 0) > 0);
 
-  const openFeedModal = (foodId = null) => {
+  const openFeedModal = (petId, foodId = null) => {
+    if (!petId) {
+      error('Please select a pet to feed.');
+      return;
+    }
+    
     if (!hasFood) {
-      // Show feed modal with "go to shop" message instead of error
+      setSelectedPetId(petId);
       setShowFeedModal(true);
       return;
     }
@@ -120,40 +174,63 @@ const PetSanctuary = () => {
 
     const initialFoodId = foodId && (inventory[foodId] || 0) > 0 ? foodId : availableFood?.id;
     if (!initialFoodId) {
-      // Show feed modal with "go to shop" message instead of error
+      setSelectedPetId(petId);
       setShowFeedModal(true);
       return;
     }
 
+    setSelectedPetId(petId);
     setSelectedFoodId(initialFoodId);
     setSelectedQuantity(1);
     setShowFeedModal(true);
   };
 
   const handleConfirmFeed = () => {
-    if (!selectedFoodId) return;
+    if (!selectedPetId || !selectedFoodId) return;
     const available = inventory[selectedFoodId] || 0;
     if (available <= 0) {
       error('You do not have this food in your inventory.');
       return;
     }
     const quantity = Math.max(1, Math.min(selectedQuantity || 1, available));
-    const result = feedPet(selectedFoodId, quantity);
+    const result = feedPet(selectedPetId, selectedFoodId, quantity);
     if (result.success) {
       success(result.message);
       setShowFeedModal(false);
+      setSelectedPetId(null);
     } else {
       error(result.message);
     }
   };
 
-  const handlePlay = () => {
-    const result = playWithPet();
+  const handlePlay = (petId) => {
+    if (!petId) {
+      error('Please select a pet to play with.');
+      return;
+    }
+    const pet = petInventory.find(p => p.id === petId);
+    if (!pet) {
+      error('Pet not found.');
+      return;
+    }
+    const result = playWithPet(petId);
     result.success ? success(result.message) : error(result.message);
   };
 
-  const currentPet = gamification.pet;
-  const rarityStyle = rarityStyles[currentPet.rarity] || rarityStyles.Common;
+  const handleEquipPet = (petId) => {
+    if (equippedPets.length >= 3) {
+      error('You can only equip up to 3 pets at a time.');
+      return;
+    }
+    equipPet(petId);
+    success('Pet equipped!');
+  };
+
+  const handleUnequipPet = (petId) => {
+    unequipPet(petId);
+    success('Pet unequipped!');
+  };
+
   const currentTheme = gamification?.currentTheme || 'default';
   const themeColors = getThemeColors(currentTheme);
 
@@ -166,24 +243,27 @@ const PetSanctuary = () => {
             Pet Sanctuary
           </h2>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Collect adorable study buddies and keep them happy!
+            Collect adorable study buddies and keep them happy! Equip up to 3 pets for combined effects.
           </p>
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setShowBackpack(true)}
+            onClick={() => {
+              setInventoryTab('pets');
+              setShowInventory(true);
+            }}
             className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/70 dark:bg-gray-800/80 shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95"
             title="View Inventory"
           >
             <Backpack className="icon-theme" size={20} />
             <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-              Backpack
-              {hasFood && (
+              Inventory
+              {(petInventory.length > 0 || hasFood) && (
                 <span 
                   className="ml-2 px-2 py-0.5 text-white rounded-full text-xs"
                   style={{ backgroundColor: 'var(--theme-icon-color)' }}
                 >
-                  {Object.values(inventory).reduce((sum, qty) => sum + qty, 0)}
+                  {petInventory.length + (hasFood ? Object.values(inventory).reduce((sum, qty) => sum + qty, 0) : 0)}
                 </span>
               )}
             </span>
@@ -203,183 +283,233 @@ const PetSanctuary = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Current Pet Card */}
-        <div className="card space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Current Companion</p>
-              <div className="flex items-center gap-2 mt-1">
-                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {currentPet.name}
-                </h3>
-                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${rarityStyle}`}>
-                  {currentPet.rarity}
-                </span>
-              </div>
-            </div>
-            <div className="w-16 h-16 rounded-2xl bg-white dark:bg-gray-900 flex items-center justify-center text-3xl animate-bounce-subtle">
-              {currentPet.species || '🐾'}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="text-center p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50">
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Level</p>
-              <p className="text-2xl font-bold icon-theme">{currentPet.level || 1}</p>
-            </div>
-            <div className="text-center p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50">
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Mood</p>
-              <p className="text-lg font-semibold icon-theme">{currentPet.mood}</p>
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between text-xs mb-2">
-              <span className="text-gray-500 dark:text-gray-400">Experience</span>
-              <span className="text-gray-600 dark:text-gray-300 font-medium">
-                {currentPet.exp || 0} / {currentPet.expForNextLevel || 50}
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
-              <div
-                className="h-2.5 rounded-full transition-all duration-500"
-                style={{ 
-                  width: `${Math.min(100, ((currentPet.exp || 0) / (currentPet.expForNextLevel || 50)) * 100)}%`,
-                  background: `linear-gradient(to right, var(--theme-progress-from), var(--theme-progress-via), var(--theme-progress-to))`
-                }}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <div className="flex items-center justify-between text-xs mb-1.5">
-                <span className="text-gray-500 dark:text-gray-400">Energy</span>
-                <span className="text-gray-600 dark:text-gray-300 font-medium">{currentPet.energy}%</span>
-              </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-green-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${currentPet.energy}%` }}
-                />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between text-xs mb-1.5">
-                <span className="text-gray-500 dark:text-gray-400">Hunger</span>
-                <span className="text-gray-600 dark:text-gray-300 font-medium">{currentPet.hunger}%</span>
-              </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-orange-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${currentPet.hunger}%` }}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex gap-3">
-            <button 
-              onClick={() => openFeedModal()}
-              disabled={!hasFood}
-              className={`btn-secondary flex-1 flex items-center justify-center gap-2 ${
-                !hasFood ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-              title={!hasFood ? 'Buy food from the shop first!' : 'Feed your pet'}
-            >
-              <Bone size={18} />
-              Feed {hasFood && `(${Object.values(inventory).reduce((sum, qty) => sum + qty, 0)})`}
-            </button>
-            <button onClick={handlePlay} className="btn-primary flex-1 flex items-center justify-center gap-2">
-              <Heart size={18} />
-              Play
-            </button>
-          </div>
-
-          {/* Buffs and Debuffs */}
-          {((currentPet.buffs && Object.keys(currentPet.buffs).length > 0) || 
-            (currentPet.debuffs && Object.keys(currentPet.debuffs).length > 0)) && (
-            <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-              <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">Pet Effects</p>
-              <div className="space-y-2">
-                {currentPet.buffs?.xpBoost && (
-                  <div className="flex items-center justify-between text-xs bg-green-50 dark:bg-green-900/20 px-3 py-2 rounded-lg">
-                    <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
-                      <TrendingUp size={14} />
-                      <span className="font-medium">XP Boost</span>
-                    </div>
-                    <span className="font-semibold text-green-600 dark:text-green-400">+{currentPet.buffs.xpBoost}%</span>
-                  </div>
-                )}
-                {currentPet.buffs?.coinBoost && (
-                  <div className="flex items-center justify-between text-xs bg-yellow-50 dark:bg-yellow-900/20 px-3 py-2 rounded-lg">
-                    <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-400">
-                      <DollarSign size={14} />
-                      <span className="font-medium">Coin Boost</span>
-                    </div>
-                    <span className="font-semibold text-yellow-600 dark:text-yellow-400">+{currentPet.buffs.coinBoost}%</span>
-                  </div>
-                )}
-                {currentPet.buffs?.discount && (
-                  <div className="flex items-center justify-between text-xs bg-blue-50 dark:bg-blue-900/20 px-3 py-2 rounded-lg">
-                    <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
-                      <Percent size={14} />
-                      <span className="font-medium">Discount</span>
-                    </div>
-                    <span className="font-semibold text-blue-600 dark:text-blue-400">-{currentPet.buffs.discount}%</span>
-                  </div>
-                )}
-                {currentPet.buffs?.luckBoost && (
-                  <div className="flex items-center justify-between text-xs bg-purple-50 dark:bg-purple-900/20 px-3 py-2 rounded-lg">
-                    <div className="flex items-center gap-2 text-purple-700 dark:text-purple-400">
-                      <Star size={14} />
-                      <span className="font-medium">Luck Boost</span>
-                    </div>
-                    <span className="font-semibold text-purple-600 dark:text-purple-400">+{currentPet.buffs.luckBoost}%</span>
-                  </div>
-                )}
-                {currentPet.debuffs?.xpPenalty && (
-                  <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
-                    <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
-                      <TrendingDown size={14} />
-                      <span className="font-medium">XP Penalty</span>
-                    </div>
-                    <span className="font-semibold text-red-600 dark:text-red-400">-{currentPet.debuffs.xpPenalty}%</span>
-                  </div>
-                )}
-                {currentPet.debuffs?.coinPenalty && (
-                  <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
-                    <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
-                      <TrendingDown size={14} />
-                      <span className="font-medium">Coin Penalty</span>
-                    </div>
-                    <span className="font-semibold text-red-600 dark:text-red-400">-{currentPet.debuffs.coinPenalty}%</span>
-                  </div>
-                )}
-                {currentPet.debuffs?.priceIncrease && (
-                  <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
-                    <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
-                      <TrendingDown size={14} />
-                      <span className="font-medium">Price Increase</span>
-                    </div>
-                    <span className="font-semibold text-red-600 dark:text-red-400">+{currentPet.debuffs.priceIncrease}%</span>
-                  </div>
-                )}
-                {currentPet.debuffs?.luckPenalty && (
-                  <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
-                    <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
-                      <TrendingDown size={14} />
-                      <span className="font-medium">Luck Penalty</span>
-                    </div>
-                    <span className="font-semibold text-red-600 dark:text-red-400">-{currentPet.debuffs.luckPenalty}%</span>
-                  </div>
-                )}
-              </div>
-            </div>
+      {/* Equipped Pets Section */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <Star className="icon-theme" size={20} />
+            Equipped Pets ({equippedPets.length}/3)
+          </h3>
+          {equippedPets.length === 0 && (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Equip pets from your inventory to activate their effects
+            </p>
           )}
         </div>
 
+        {equippedPets.length === 0 ? (
+          <div className="text-center py-12 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl">
+            <PawPrint className="text-gray-400 mx-auto mb-4" size={48} />
+            <p className="text-gray-500 dark:text-gray-400 mb-2">No pets equipped</p>
+            <button
+              onClick={() => setShowInventory(true)}
+              className="btn-primary inline-flex items-center gap-2 mt-4"
+            >
+              <Plus size={18} />
+              Equip Pets
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[...Array(3)].map((_, index) => {
+              const pet = equippedPets[index];
+              if (!pet) {
+                return (
+                  <div
+                    key={`empty-${index}`}
+                    className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-6 flex flex-col items-center justify-center min-h-[200px]"
+                  >
+                    <Plus className="text-gray-400 mb-2" size={32} />
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Empty Slot</p>
+                    <button
+                      onClick={() => setShowInventory(true)}
+                      className="btn-secondary mt-2 text-xs"
+                    >
+                      Equip Pet
+                    </button>
+                  </div>
+                );
+              }
+
+              const rarityStyle = rarityStyles[pet.rarity] || rarityStyles.Common;
+              return (
+                <div
+                  key={pet.id}
+                  className="card p-4 border-2"
+                  style={{
+                    borderColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.3)',
+                  }}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-12 h-12 rounded-xl bg-white dark:bg-gray-900 flex items-center justify-center text-2xl">
+                        {pet.species || '🐾'}
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-gray-900 dark:text-white">{pet.name}</h4>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${rarityStyle}`}>
+                          {pet.rarity}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleUnequipPet(pet.id)}
+                      className="text-gray-400 hover:text-red-500 transition-colors"
+                      title="Unequip"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
+                    <div className="text-center p-2 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                      <p className="text-gray-500 dark:text-gray-400">Level</p>
+                      <p className="font-bold icon-theme">{pet.level || 1}</p>
+                    </div>
+                    <div className="text-center p-2 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                      <p className="text-gray-500 dark:text-gray-400">Mood</p>
+                      <p className="font-semibold icon-theme text-xs">{pet.mood}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 mb-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500 dark:text-gray-400">Energy</span>
+                      <span className="font-medium">{pet.energy || 70}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+                      <div
+                        className="bg-green-500 h-1.5 rounded-full transition-all"
+                        style={{ width: `${pet.energy || 70}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 mb-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500 dark:text-gray-400">Hunger</span>
+                      <span className="font-medium">{pet.hunger || 30}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+                      <div
+                        className="bg-orange-500 h-1.5 rounded-full transition-all"
+                        style={{ width: `${pet.hunger || 30}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => openFeedModal(pet.id)}
+                      disabled={!hasFood}
+                      className="btn-secondary flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5"
+                      title={!hasFood ? 'Buy food from shop first!' : 'Feed pet'}
+                    >
+                      <Bone size={14} />
+                      <span>Feed</span>
+                    </button>
+                    <button
+                      onClick={() => handlePlay(pet.id)}
+                      disabled={(pet.energy || 0) <= 0}
+                      className="btn-primary flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5"
+                      title={(pet.energy || 0) <= 0 ? 'No energy' : 'Play with pet'}
+                    >
+                      <Heart size={14} />
+                      <span>Play</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Combined Effects */}
+        {(combinedEffects.buffs && Object.keys(combinedEffects.buffs).some(k => combinedEffects.buffs[k] > 0)) ||
+         (combinedEffects.debuffs && Object.keys(combinedEffects.debuffs).some(k => combinedEffects.debuffs[k] > 0)) ? (
+          <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">
+              Combined Effects from Equipped Pets
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {combinedEffects.buffs.xpBoost > 0 && (
+                <div className="flex items-center justify-between text-xs bg-green-50 dark:bg-green-900/20 px-3 py-2 rounded-lg">
+                  <div className="flex items-center gap-1 text-green-700 dark:text-green-400">
+                    <TrendingUp size={12} />
+                    <span className="font-medium">XP Boost</span>
+                  </div>
+                  <span className="font-semibold text-green-600 dark:text-green-400">+{combinedEffects.buffs.xpBoost}%</span>
+                </div>
+              )}
+              {combinedEffects.buffs.coinBoost > 0 && (
+                <div className="flex items-center justify-between text-xs bg-yellow-50 dark:bg-yellow-900/20 px-3 py-2 rounded-lg">
+                  <div className="flex items-center gap-1 text-yellow-700 dark:text-yellow-400">
+                    <DollarSign size={12} />
+                    <span className="font-medium">Coin Boost</span>
+                  </div>
+                  <span className="font-semibold text-yellow-600 dark:text-yellow-400">+{combinedEffects.buffs.coinBoost}%</span>
+                </div>
+              )}
+              {combinedEffects.buffs.discount > 0 && (
+                <div className="flex items-center justify-between text-xs bg-blue-50 dark:bg-blue-900/20 px-3 py-2 rounded-lg">
+                  <div className="flex items-center gap-1 text-blue-700 dark:text-blue-400">
+                    <Percent size={12} />
+                    <span className="font-medium">Discount</span>
+                  </div>
+                  <span className="font-semibold text-blue-600 dark:text-blue-400">-{combinedEffects.buffs.discount}%</span>
+                </div>
+              )}
+              {combinedEffects.buffs.luckBoost > 0 && (
+                <div className="flex items-center justify-between text-xs bg-purple-50 dark:bg-purple-900/20 px-3 py-2 rounded-lg">
+                  <div className="flex items-center gap-1 text-purple-700 dark:text-purple-400">
+                    <Star size={12} />
+                    <span className="font-medium">Luck Boost</span>
+                  </div>
+                  <span className="font-semibold text-purple-600 dark:text-purple-400">+{combinedEffects.buffs.luckBoost}%</span>
+                </div>
+              )}
+              {combinedEffects.debuffs.xpPenalty > 0 && (
+                <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
+                  <div className="flex items-center gap-1 text-red-700 dark:text-red-400">
+                    <TrendingDown size={12} />
+                    <span className="font-medium">XP Penalty</span>
+                  </div>
+                  <span className="font-semibold text-red-600 dark:text-red-400">-{combinedEffects.debuffs.xpPenalty}%</span>
+                </div>
+              )}
+              {combinedEffects.debuffs.coinPenalty > 0 && (
+                <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
+                  <div className="flex items-center gap-1 text-red-700 dark:text-red-400">
+                    <TrendingDown size={12} />
+                    <span className="font-medium">Coin Penalty</span>
+                  </div>
+                  <span className="font-semibold text-red-600 dark:text-red-400">-{combinedEffects.debuffs.coinPenalty}%</span>
+                </div>
+              )}
+              {combinedEffects.debuffs.priceIncrease > 0 && (
+                <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
+                  <div className="flex items-center gap-1 text-red-700 dark:text-red-400">
+                    <TrendingDown size={12} />
+                    <span className="font-medium">Price Increase</span>
+                  </div>
+                  <span className="font-semibold text-red-600 dark:text-red-400">+{combinedEffects.debuffs.priceIncrease}%</span>
+                </div>
+              )}
+              {combinedEffects.debuffs.luckPenalty > 0 && (
+                <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
+                  <div className="flex items-center gap-1 text-red-700 dark:text-red-400">
+                    <TrendingDown size={12} />
+                    <span className="font-medium">Luck Penalty</span>
+                  </div>
+                  <span className="font-semibold text-red-600 dark:text-red-400">-{combinedEffects.debuffs.luckPenalty}%</span>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Spin Card */}
         <div className="card space-y-4">
           <div className="flex items-center justify-between">
@@ -399,7 +529,7 @@ const PetSanctuary = () => {
             }}
           >
             <div className={`text-7xl ${isSpinning ? 'animate-spin-slow' : 'animate-bounce-subtle'}`}>
-              {isSpinning ? '🎁' : currentPet.species || '🐾'}
+              {isSpinning ? '🎁' : (equippedPets[0]?.species || '🐾')}
             </div>
             <div className="absolute inset-0 bg-white/10 animate-pulse-slow" />
           </div>
@@ -465,436 +595,296 @@ const PetSanctuary = () => {
             </div>
           )}
         </div>
-      </div>
 
-      {/* Pet Selection Modal */}
-      {showPetSelection && newPet && oldPet && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animate-fade-in backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-4xl w-full p-6 animate-scale-in max-h-[90vh] overflow-y-auto">
-            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-4 text-center">
-              Choose Your Pet!
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              {/* Old Pet */}
-              <div 
-                className="card p-4 border-2"
-                style={{
-                  borderColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.3)'
-                }}
-              >
-                <div className="text-center mb-4">
-                  <div className="text-5xl mb-2">{oldPet.species}</div>
-                  <h4 className="text-xl font-bold text-gray-900 dark:text-white">{oldPet.name}</h4>
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold mt-2 inline-block ${rarityStyles[oldPet.rarity] || rarityStyles.Common}`}>
-                    {oldPet.rarity}
-                  </span>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">Current Pet</p>
-                </div>
-                
-                {/* Old Pet Stats */}
-                <div className="space-y-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-2">Effects</p>
-                  
-                  {/* Buffs */}
-                  {oldPet.buffs && Object.keys(oldPet.buffs).length > 0 && (
-                    <div className="space-y-1">
-                      {oldPet.buffs.xpBoost && (
-                        <div className="flex items-center justify-between text-xs bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded">
-                          <span className="text-green-700 dark:text-green-400">XP Boost</span>
-                          <span className="font-semibold text-green-600 dark:text-green-400">+{oldPet.buffs.xpBoost}%</span>
-                        </div>
-                      )}
-                      {oldPet.buffs.coinBoost && (
-                        <div className="flex items-center justify-between text-xs bg-yellow-50 dark:bg-yellow-900/20 px-2 py-1 rounded">
-                          <span className="text-yellow-700 dark:text-yellow-400">Coin Boost</span>
-                          <span className="font-semibold text-yellow-600 dark:text-yellow-400">+{oldPet.buffs.coinBoost}%</span>
-                        </div>
-                      )}
-                      {oldPet.buffs.discount && (
-                        <div className="flex items-center justify-between text-xs bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
-                          <span className="text-blue-700 dark:text-blue-400">Discount</span>
-                          <span className="font-semibold text-blue-600 dark:text-blue-400">-{oldPet.buffs.discount}%</span>
-                        </div>
-                      )}
-                      {oldPet.buffs.luckBoost && (
-                        <div className="flex items-center justify-between text-xs bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded">
-                          <span className="text-purple-700 dark:text-purple-400">Luck Boost</span>
-                          <span className="font-semibold text-purple-600 dark:text-purple-400">+{oldPet.buffs.luckBoost}%</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  
-                  {/* Debuffs */}
-                  {oldPet.debuffs && Object.keys(oldPet.debuffs).length > 0 && (
-                    <div className="space-y-1 mt-2">
-                      {oldPet.debuffs.xpPenalty && (
-                        <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
-                          <span className="text-red-700 dark:text-red-400">XP Penalty</span>
-                          <span className="font-semibold text-red-600 dark:text-red-400">-{oldPet.debuffs.xpPenalty}%</span>
-                        </div>
-                      )}
-                      {oldPet.debuffs.coinPenalty && (
-                        <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
-                          <span className="text-red-700 dark:text-red-400">Coin Penalty</span>
-                          <span className="font-semibold text-red-600 dark:text-red-400">-{oldPet.debuffs.coinPenalty}%</span>
-                        </div>
-                      )}
-                      {oldPet.debuffs.priceIncrease && (
-                        <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
-                          <span className="text-red-700 dark:text-red-400">Price Increase</span>
-                          <span className="font-semibold text-red-600 dark:text-red-400">+{oldPet.debuffs.priceIncrease}%</span>
-                        </div>
-                      )}
-                      {oldPet.debuffs.luckPenalty && (
-                        <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
-                          <span className="text-red-700 dark:text-red-400">Luck Penalty</span>
-                          <span className="font-semibold text-red-600 dark:text-red-400">-{oldPet.debuffs.luckPenalty}%</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  
-                  {(!oldPet.buffs || Object.keys(oldPet.buffs).length === 0) && 
-                   (!oldPet.debuffs || Object.keys(oldPet.debuffs).length === 0) && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 italic">No effects</p>
-                  )}
-                </div>
-              </div>
-              
-              {/* New Pet */}
-              <div className="card p-4 border-2 border-green-300 dark:border-green-600 bg-green-50 dark:bg-green-900/20">
-                <div className="text-center mb-4">
-                  <div className="text-5xl mb-2">{newPet.species}</div>
-                  <h4 className="text-xl font-bold text-gray-900 dark:text-white">{newPet.name}</h4>
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold mt-2 inline-block ${rarityStyles[newPet.rarity] || rarityStyles.Common}`}>
-                    {newPet.rarity}
-                  </span>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">New Pet</p>
-                </div>
-                
-                {/* New Pet Stats */}
-                <div className="space-y-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-2">Effects</p>
-                  
-                  {/* Buffs */}
-                  {newPet.buffs && Object.keys(newPet.buffs).length > 0 && (
-                    <div className="space-y-1">
-                      {newPet.buffs.xpBoost && (
-                        <div className="flex items-center justify-between text-xs bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded">
-                          <span className="text-green-700 dark:text-green-400">XP Boost</span>
-                          <span className="font-semibold text-green-600 dark:text-green-400">+{newPet.buffs.xpBoost}%</span>
-                        </div>
-                      )}
-                      {newPet.buffs.coinBoost && (
-                        <div className="flex items-center justify-between text-xs bg-yellow-50 dark:bg-yellow-900/20 px-2 py-1 rounded">
-                          <span className="text-yellow-700 dark:text-yellow-400">Coin Boost</span>
-                          <span className="font-semibold text-yellow-600 dark:text-yellow-400">+{newPet.buffs.coinBoost}%</span>
-                        </div>
-                      )}
-                      {newPet.buffs.discount && (
-                        <div className="flex items-center justify-between text-xs bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
-                          <span className="text-blue-700 dark:text-blue-400">Discount</span>
-                          <span className="font-semibold text-blue-600 dark:text-blue-400">-{newPet.buffs.discount}%</span>
-                        </div>
-                      )}
-                      {newPet.buffs.luckBoost && (
-                        <div className="flex items-center justify-between text-xs bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded">
-                          <span className="text-purple-700 dark:text-purple-400">Luck Boost</span>
-                          <span className="font-semibold text-purple-600 dark:text-purple-400">+{newPet.buffs.luckBoost}%</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  
-                  {/* Debuffs */}
-                  {newPet.debuffs && Object.keys(newPet.debuffs).length > 0 && (
-                    <div className="space-y-1 mt-2">
-                      {newPet.debuffs.xpPenalty && (
-                        <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
-                          <span className="text-red-700 dark:text-red-400">XP Penalty</span>
-                          <span className="font-semibold text-red-600 dark:text-red-400">-{newPet.debuffs.xpPenalty}%</span>
-                        </div>
-                      )}
-                      {newPet.debuffs.coinPenalty && (
-                        <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
-                          <span className="text-red-700 dark:text-red-400">Coin Penalty</span>
-                          <span className="font-semibold text-red-600 dark:text-red-400">-{newPet.debuffs.coinPenalty}%</span>
-                        </div>
-                      )}
-                      {newPet.debuffs.priceIncrease && (
-                        <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
-                          <span className="text-red-700 dark:text-red-400">Price Increase</span>
-                          <span className="font-semibold text-red-600 dark:text-red-400">+{newPet.debuffs.priceIncrease}%</span>
-                        </div>
-                      )}
-                      {newPet.debuffs.luckPenalty && (
-                        <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
-                          <span className="text-red-700 dark:text-red-400">Luck Penalty</span>
-                          <span className="font-semibold text-red-600 dark:text-red-400">-{newPet.debuffs.luckPenalty}%</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  
-                  {(!newPet.buffs || Object.keys(newPet.buffs).length === 0) && 
-                   (!newPet.debuffs || Object.keys(newPet.debuffs).length === 0) && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 italic">No effects</p>
-                  )}
-                </div>
-              </div>
+        {/* Quick Stats Card */}
+        <div className="card space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <TrendingUp className="icon-theme" size={20} />
+            Collection Stats
+          </h3>
+          
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Total Pets</span>
+              <span className="text-lg font-bold icon-theme">{petInventory.length}</span>
             </div>
             
-            {/* Stat Comparison */}
-            <div 
-              className="card p-4 mb-6 bg-gray-50 dark:bg-gray-900/50"
-              style={{
-                borderColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.2)',
-              }}
-            >
-              <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3 text-center">Stat Comparison</h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {/* XP Boost Comparison */}
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">XP Boost</p>
-                  <div className="flex items-center justify-center gap-2">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {oldPet.buffs?.xpBoost || 0}%
-                    </span>
-                    <span className="text-gray-400">→</span>
-                    <span className={`text-sm font-bold ${
-                      (newPet.buffs?.xpBoost || 0) > (oldPet.buffs?.xpBoost || 0) 
-                        ? 'text-green-600 dark:text-green-400' 
-                        : (newPet.buffs?.xpBoost || 0) < (oldPet.buffs?.xpBoost || 0)
-                        ? 'text-red-600 dark:text-red-400'
-                        : 'text-gray-700 dark:text-gray-300'
-                    }`}>
-                      {newPet.buffs?.xpBoost || 0}%
-                    </span>
-                  </div>
-                  {(newPet.buffs?.xpBoost || 0) !== (oldPet.buffs?.xpBoost || 0) && (
-                    <span className={`text-xs ${
-                      (newPet.buffs?.xpBoost || 0) > (oldPet.buffs?.xpBoost || 0) 
-                        ? 'text-green-600 dark:text-green-400' 
-                        : 'text-red-600 dark:text-red-400'
-                    }`}>
-                      {((newPet.buffs?.xpBoost || 0) - (oldPet.buffs?.xpBoost || 0)) > 0 ? '+' : ''}
-                      {((newPet.buffs?.xpBoost || 0) - (oldPet.buffs?.xpBoost || 0))}%
-                    </span>
-                  )}
-                </div>
-                
-                {/* Coin Boost Comparison */}
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Coin Boost</p>
-                  <div className="flex items-center justify-center gap-2">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {oldPet.buffs?.coinBoost || 0}%
-                    </span>
-                    <span className="text-gray-400">→</span>
-                    <span className={`text-sm font-bold ${
-                      (newPet.buffs?.coinBoost || 0) > (oldPet.buffs?.coinBoost || 0) 
-                        ? 'text-green-600 dark:text-green-400' 
-                        : (newPet.buffs?.coinBoost || 0) < (oldPet.buffs?.coinBoost || 0)
-                        ? 'text-red-600 dark:text-red-400'
-                        : 'text-gray-700 dark:text-gray-300'
-                    }`}>
-                      {newPet.buffs?.coinBoost || 0}%
-                    </span>
-                  </div>
-                  {(newPet.buffs?.coinBoost || 0) !== (oldPet.buffs?.coinBoost || 0) && (
-                    <span className={`text-xs ${
-                      (newPet.buffs?.coinBoost || 0) > (oldPet.buffs?.coinBoost || 0) 
-                        ? 'text-green-600 dark:text-green-400' 
-                        : 'text-red-600 dark:text-red-400'
-                    }`}>
-                      {((newPet.buffs?.coinBoost || 0) - (oldPet.buffs?.coinBoost || 0)) > 0 ? '+' : ''}
-                      {((newPet.buffs?.coinBoost || 0) - (oldPet.buffs?.coinBoost || 0))}%
-                    </span>
-                  )}
-                </div>
-                
-                {/* Discount Comparison */}
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Discount</p>
-                  <div className="flex items-center justify-center gap-2">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {oldPet.buffs?.discount || 0}%
-                    </span>
-                    <span className="text-gray-400">→</span>
-                    <span className={`text-sm font-bold ${
-                      (newPet.buffs?.discount || 0) > (oldPet.buffs?.discount || 0) 
-                        ? 'text-green-600 dark:text-green-400' 
-                        : (newPet.buffs?.discount || 0) < (oldPet.buffs?.discount || 0)
-                        ? 'text-red-600 dark:text-red-400'
-                        : 'text-gray-700 dark:text-gray-300'
-                    }`}>
-                      {newPet.buffs?.discount || 0}%
-                    </span>
-                  </div>
-                  {(newPet.buffs?.discount || 0) !== (oldPet.buffs?.discount || 0) && (
-                    <span className={`text-xs ${
-                      (newPet.buffs?.discount || 0) > (oldPet.buffs?.discount || 0) 
-                        ? 'text-green-600 dark:text-green-400' 
-                        : 'text-red-600 dark:text-red-400'
-                    }`}>
-                      {((newPet.buffs?.discount || 0) - (oldPet.buffs?.discount || 0)) > 0 ? '+' : ''}
-                      {((newPet.buffs?.discount || 0) - (oldPet.buffs?.discount || 0))}%
-                    </span>
-                  )}
-                </div>
-                
-                {/* Luck Boost Comparison */}
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Luck Boost</p>
-                  <div className="flex items-center justify-center gap-2">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {oldPet.buffs?.luckBoost || 0}%
-                    </span>
-                    <span className="text-gray-400">→</span>
-                    <span className={`text-sm font-bold ${
-                      (newPet.buffs?.luckBoost || 0) > (oldPet.buffs?.luckBoost || 0) 
-                        ? 'text-green-600 dark:text-green-400' 
-                        : (newPet.buffs?.luckBoost || 0) < (oldPet.buffs?.luckBoost || 0)
-                        ? 'text-red-600 dark:text-red-400'
-                        : 'text-gray-700 dark:text-gray-300'
-                    }`}>
-                      {newPet.buffs?.luckBoost || 0}%
-                    </span>
-                  </div>
-                  {(newPet.buffs?.luckBoost || 0) !== (oldPet.buffs?.luckBoost || 0) && (
-                    <span className={`text-xs ${
-                      (newPet.buffs?.luckBoost || 0) > (oldPet.buffs?.luckBoost || 0) 
-                        ? 'text-green-600 dark:text-green-400' 
-                        : 'text-red-600 dark:text-red-400'
-                    }`}>
-                      {((newPet.buffs?.luckBoost || 0) - (oldPet.buffs?.luckBoost || 0)) > 0 ? '+' : ''}
-                      {((newPet.buffs?.luckBoost || 0) - (oldPet.buffs?.luckBoost || 0))}%
-                    </span>
-                  )}
-                </div>
-              </div>
+            <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Equipped</span>
+              <span className="text-lg font-bold icon-theme">{equippedPets.length}/3</span>
             </div>
-            
-            <div className="flex gap-3">
-              <button
-                onClick={handleKeepOldPet}
-                className="btn-secondary flex-1 flex items-center justify-center gap-2"
-              >
-                Keep Current Pet
-              </button>
-              <button
-                onClick={handleSwitchToNewPet}
-                className="btn-primary flex-1 flex items-center justify-center gap-2"
-              >
-                Switch to New Pet
-              </button>
+
+            <div className="grid grid-cols-2 gap-3">
+              {['Common', 'Rare', 'Epic', 'Legendary', 'Mythical', 'Secret'].map(rarity => {
+                const count = petInventory.filter(p => p.rarity === rarity).length;
+                if (count === 0) return null;
+                return (
+                  <div key={rarity} className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50">
+                    <div className="flex items-center justify-between">
+                      <span className={`text-xs font-semibold ${rarityStyles[rarity] || ''}`}>{rarity}</span>
+                      <span className="text-sm font-bold text-gray-900 dark:text-white">{count}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
-      )}
+      </div>
 
-
-      {/* Backpack Modal */}
-      {showBackpack && (
+      {/* Unified Inventory Modal */}
+      {showInventory && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animate-fade-in backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-2xl w-full p-6 animate-scale-in max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-4xl w-full p-6 animate-scale-in max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <Backpack className="icon-theme" size={28} />
-                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Backpack</h3>
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Inventory</h3>
               </div>
               <button
-                onClick={() => setShowBackpack(false)}
+                onClick={() => setShowInventory(false)}
                 className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-all duration-200 transform hover:rotate-90 hover:scale-110"
               >
                 <X size={24} />
               </button>
             </div>
-            
-            {hasFood ? (
-              <div className="space-y-4">
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Your food inventory ({Object.values(inventory).reduce((sum, qty) => sum + qty, 0)} items)
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {FOOD_ITEMS.map((food) => {
-                    const qty = inventory[food.id] || 0;
-                    if (qty <= 0) return null;
-                    return (
-                      <div
-                        key={food.id}
-                        className="card p-4 border-2 transition-all duration-200"
-                        style={{
-                          borderColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.3)',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = 'var(--theme-icon-color, rgb(14, 165, 233))';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.3)';
-                        }}
-                      >
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-3">
-                            <div className="text-3xl">{food.icon}</div>
-                            <div>
-                              <h4 className="font-semibold text-gray-900 dark:text-white">{food.name}</h4>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">{food.description}</p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-bold" style={{ color: 'var(--theme-icon-color, rgb(14, 165, 233))' }}>
-                              {qty}x
-                            </div>
-                          </div>
-                        </div>
-                        <div className="space-y-1 text-xs text-gray-600 dark:text-gray-400 mb-3">
-                          <div className="flex items-center justify-between">
-                            <span>Hunger Reduction:</span>
-                            <span className="font-medium text-orange-600 dark:text-orange-400">-{food.hungerReduction}%</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span>Energy Boost:</span>
-                            <span className="font-medium text-green-600 dark:text-green-400">+{food.energyBoost}%</span>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => {
-                            setShowBackpack(false);
-                            openFeedModal(food.id);
-                          }}
-                          className="btn-primary w-full flex items-center justify-center gap-2"
+
+            {/* Tab Switcher */}
+            <div className="flex gap-2 mb-6 border-b border-gray-200 dark:border-gray-700">
+              <button
+                onClick={() => setInventoryTab('pets')}
+                className={`px-4 py-2 font-semibold text-sm transition-colors relative ${
+                  inventoryTab === 'pets'
+                    ? 'text-primary-600 dark:text-primary-400'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <PawPrint size={18} />
+                  Pets ({petInventory.length})
+                </span>
+                {inventoryTab === 'pets' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 dark:bg-primary-400" />
+                )}
+              </button>
+              <button
+                onClick={() => setInventoryTab('food')}
+                className={`px-4 py-2 font-semibold text-sm transition-colors relative ${
+                  inventoryTab === 'food'
+                    ? 'text-primary-600 dark:text-primary-400'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <Bone size={18} />
+                  Food ({Object.values(inventory).reduce((sum, qty) => sum + qty, 0)})
+                </span>
+                {inventoryTab === 'food' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 dark:bg-primary-400" />
+                )}
+              </button>
+            </div>
+
+            {/* Pets Section */}
+            {inventoryTab === 'pets' && (
+              <>
+                {petInventory.length === 0 ? (
+                  <div className="text-center py-12">
+                    <PawPrint className="text-gray-400 mx-auto mb-4" size={64} />
+                    <p className="text-lg font-medium text-gray-500 dark:text-gray-400 mb-2">
+                      Your pet inventory is empty
+                    </p>
+                    <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">
+                      Spin for pets to start your collection!
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {petInventory.map((pet) => {
+                      const isEquipped = equippedPets.some(ep => ep.id === pet.id);
+                      const rarityStyle = rarityStyles[pet.rarity] || rarityStyles.Common;
+                      
+                      return (
+                        <div
+                          key={pet.id}
+                          className={`card p-4 border-2 transition-all ${
+                            isEquipped 
+                              ? 'border-green-400 dark:border-green-600 bg-green-50 dark:bg-green-900/20' 
+                              : 'border-gray-200 dark:border-gray-700'
+                          }`}
                         >
-                          <Bone size={16} />
-                          Feed Pet
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <Backpack className="text-gray-400 mx-auto mb-4" size={64} />
-                <p className="text-lg font-medium text-gray-500 dark:text-gray-400 mb-2">
-                  Your backpack is empty
-                </p>
-                <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">
-                  Buy food from the shop to add items to your inventory
-                </p>
-                <button
-                  onClick={() => {
-                    setShowBackpack(false);
-                    sessionStorage.setItem('showFoodTab', 'true');
-                    setActiveTab('shop');
-                  }}
-                  className="btn-primary flex items-center gap-2 mx-auto"
-                >
-                  <ShoppingCart size={18} />
-                  Go to Shop
-                </button>
-              </div>
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-10 h-10 rounded-lg bg-white dark:bg-gray-900 flex items-center justify-center text-xl">
+                                {pet.species || '🐾'}
+                              </div>
+                              <div>
+                                <h4 className="font-semibold text-gray-900 dark:text-white text-sm">{pet.name}</h4>
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${rarityStyle}`}>
+                                  {pet.rarity}
+                                </span>
+                              </div>
+                            </div>
+                            {isEquipped && (
+                              <Check className="text-green-600 dark:text-green-400" size={18} />
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
+                            <div className="text-center p-2 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                              <p className="text-gray-500 dark:text-gray-400">Level</p>
+                              <p className="font-bold">{pet.level || 1}</p>
+                            </div>
+                            <div className="text-center p-2 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                              <p className="text-gray-500 dark:text-gray-400">Mood</p>
+                              <p className="font-semibold text-xs">{pet.mood}</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 mb-3">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-gray-500 dark:text-gray-400">Energy</span>
+                              <span className="font-medium">{pet.energy || 70}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1">
+                              <div
+                                className="bg-green-500 h-1 rounded-full"
+                                style={{ width: `${pet.energy || 70}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2 mt-3">
+                            {isEquipped ? (
+                              <button
+                                onClick={() => handleUnequipPet(pet.id)}
+                                className="btn-secondary flex-1 text-xs py-1.5"
+                              >
+                                Unequip
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleEquipPet(pet.id)}
+                                disabled={equippedPets.length >= 3}
+                                className="btn-primary flex-1 text-xs py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {equippedPets.length >= 3 ? 'Full' : 'Equip'}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => {
+                                setShowInventory(false);
+                                openFeedModal(pet.id);
+                              }}
+                              disabled={!hasFood}
+                              className="btn-secondary text-xs py-1.5 px-2 flex items-center justify-center gap-1.5"
+                              title={!hasFood ? 'Buy food first' : 'Feed'}
+                            >
+                              <Bone size={14} />
+                              <span>Feed</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowInventory(false);
+                                handlePlay(pet.id);
+                              }}
+                              disabled={(pet.energy || 0) <= 0}
+                              className="btn-secondary text-xs py-1.5 px-2 flex items-center justify-center gap-1.5"
+                              title={(pet.energy || 0) <= 0 ? 'No energy' : 'Play'}
+                            >
+                              <Heart size={14} />
+                              <span>Play</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Food Section */}
+            {inventoryTab === 'food' && (
+              <>
+                {hasFood ? (
+                  <div className="space-y-4">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Your food inventory ({Object.values(inventory).reduce((sum, qty) => sum + qty, 0)} items)
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {FOOD_ITEMS.map((food) => {
+                        const qty = inventory[food.id] || 0;
+                        if (qty <= 0) return null;
+                        return (
+                          <div
+                            key={food.id}
+                            className="card p-4 border-2 transition-all duration-200"
+                            style={{
+                              borderColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.3)',
+                            }}
+                          >
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-3">
+                                <div className="text-3xl">{food.icon}</div>
+                                <div>
+                                  <h4 className="font-semibold text-gray-900 dark:text-white">{food.name}</h4>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">{food.description}</p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-2xl font-bold" style={{ color: 'var(--theme-icon-color, rgb(14, 165, 233))' }}>
+                                  {qty}x
+                                </div>
+                              </div>
+                            </div>
+                            <div className="space-y-1 text-xs text-gray-600 dark:text-gray-400 mb-3">
+                              <div className="flex items-center justify-between">
+                                <span>Hunger Reduction:</span>
+                                <span className="font-medium text-orange-600 dark:text-orange-400">-{food.hungerReduction}%</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span>Energy Boost:</span>
+                                <span className="font-medium text-green-600 dark:text-green-400">+{food.energyBoost}%</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setInventoryTab('pets');
+                              }}
+                              className="btn-primary w-full flex items-center justify-center gap-2"
+                            >
+                              <Bone size={16} />
+                              Select Pet to Feed
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <Bone className="text-gray-400 mx-auto mb-4" size={64} />
+                    <p className="text-lg font-medium text-gray-500 dark:text-gray-400 mb-2">
+                      Your food inventory is empty
+                    </p>
+                    <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">
+                      Buy food from the shop to add items to your inventory
+                    </p>
+                    <button
+                      onClick={() => {
+                        setShowInventory(false);
+                        sessionStorage.setItem('showFoodTab', 'true');
+                        setActiveTab('shop');
+                      }}
+                      className="btn-primary flex items-center gap-2 mx-auto"
+                    >
+                      <ShoppingCart size={18} />
+                      Go to Shop
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -907,7 +897,7 @@ const PetSanctuary = () => {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <Bone className="icon-theme" size={22} />
-                Feed {currentPet.name}
+                Feed Pet
               </h3>
               <button
                 onClick={() => setShowFeedModal(false)}
@@ -965,16 +955,6 @@ const PetSanctuary = () => {
                               : 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.3)',
                             borderWidth: isSelected ? '2px' : '1px',
                           }}
-                          onMouseEnter={(e) => {
-                            if (!isSelected) {
-                              e.currentTarget.style.borderColor = 'var(--theme-icon-color, rgb(14, 165, 233))';
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isSelected) {
-                              e.currentTarget.style.borderColor = 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.3)';
-                            }
-                          }}
                         >
                           <div className="flex items-center gap-2">
                             <span className="text-2xl">{food.icon}</span>
@@ -1009,7 +989,6 @@ const PetSanctuary = () => {
                         const maxQty = inventory[selectedFoodId] || 0;
                         const clampedQuantity = Math.max(1, Math.min(selectedQuantity || 1, maxQty));
                         if (clampedQuantity !== selectedQuantity) {
-                          // keep state in sync
                           setSelectedQuantity(clampedQuantity);
                         }
                         const food = FOOD_ITEMS.find(f => f.id === selectedFoodId) || FOOD_ITEMS[0];
@@ -1052,7 +1031,7 @@ const PetSanctuary = () => {
                         className="btn-primary flex-1 flex items-center justify-center gap-2"
                       >
                         <Bone size={18} />
-                        Feed {currentPet.name}
+                        Feed Pet
                       </button>
                       <button
                         onClick={() => setShowFeedModal(false)}
@@ -1073,4 +1052,3 @@ const PetSanctuary = () => {
 };
 
 export default PetSanctuary;
-

@@ -3,53 +3,88 @@
  * Displays level, currency, and virtual pet interactions
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { useToast } from '../context/ToastContext';
-import { Trophy, Coins, PawPrint, Bone, Wand2, Star } from 'lucide-react';
+import { Trophy, Coins, PawPrint, TrendingUp, DollarSign, Percent, Star } from 'lucide-react';
 
 const rarityBadgeStyles = {
   Common: 'text-gray-500 bg-gray-100 dark:bg-gray-800/60',
   Rare: 'text-blue-500 bg-blue-100 dark:bg-blue-900/40',
   Epic: 'text-purple-500 bg-purple-100 dark:bg-purple-900/40',
   Legendary: 'text-yellow-500 bg-yellow-100 dark:bg-yellow-900/30',
+  Mythical: 'text-pink-500 bg-pink-100 dark:bg-pink-900/30',
+  Secret: 'text-gray-900 dark:text-gray-100 bg-gray-800 dark:bg-gray-900 border-2 border-gray-400 dark:border-gray-500',
+};
+
+// Helper function to scale buffs/debuffs for level (same as in AppContext)
+const scaleBuffsForLevel = (buffs, level) => {
+  if (!buffs || level <= 1) return buffs || {};
+  const multiplier = Math.min(1 + (level - 1) * 0.02, 2);
+  const scaled = {};
+  for (const [key, value] of Object.entries(buffs)) {
+    scaled[key] = Math.floor(value * multiplier);
+  }
+  return scaled;
+};
+
+const scaleDebuffsForLevel = (debuffs, level) => {
+  if (!debuffs || level <= 1) return debuffs || {};
+  const multiplier = Math.max(1 - (level - 1) * 0.01, 0.5);
+  const scaled = {};
+  for (const [key, value] of Object.entries(debuffs)) {
+    scaled[key] = Math.floor(value * multiplier);
+  }
+  return scaled;
+};
+
+// Helper to calculate combined buffs from all equipped pets
+const getCombinedBuffs = (equippedPets) => {
+  const combinedBuffs = {
+    xpBoost: 0,
+    coinBoost: 0,
+    discount: 0,
+    luckBoost: 0,
+  };
+  const combinedDebuffs = {
+    xpPenalty: 0,
+    coinPenalty: 0,
+    priceIncrease: 0,
+    luckPenalty: 0,
+  };
+
+  equippedPets.forEach(pet => {
+    const scaledBuffs = scaleBuffsForLevel(pet.buffs || {}, pet.level || 1);
+    const scaledDebuffs = scaleDebuffsForLevel(pet.debuffs || {}, pet.level || 1);
+    
+    combinedBuffs.xpBoost += scaledBuffs.xpBoost || 0;
+    combinedBuffs.coinBoost += scaledBuffs.coinBoost || 0;
+    combinedBuffs.discount += scaledBuffs.discount || 0;
+    combinedBuffs.luckBoost += scaledBuffs.luckBoost || 0;
+    
+    combinedDebuffs.xpPenalty += scaledDebuffs.xpPenalty || 0;
+    combinedDebuffs.coinPenalty += scaledDebuffs.coinPenalty || 0;
+    combinedDebuffs.priceIncrease += scaledDebuffs.priceIncrease || 0;
+    combinedDebuffs.luckPenalty += scaledDebuffs.luckPenalty || 0;
+  });
+
+  return { buffs: combinedBuffs, debuffs: combinedDebuffs };
 };
 
 const GamificationPanel = () => {
-  const { gamification, feedPet, playWithPet, renamePet } = useApp();
-  const { success, error } = useToast();
-  const [isRenaming, setIsRenaming] = useState(false);
-  const [petNameInput, setPetNameInput] = useState(gamification.pet.name);
+  const { gamification, setActiveTab } = useApp();
 
-  useEffect(() => {
-    setPetNameInput(gamification.pet.name);
-  }, [gamification.pet.name]);
+  const petInventory = gamification.petInventory || [];
+  const equippedPets = useMemo(() => {
+    return (gamification.equippedPets || [])
+      .map(id => petInventory.find(p => p.id === id))
+      .filter(Boolean);
+  }, [gamification.equippedPets, petInventory]);
+
+  const firstEquippedPet = equippedPets[0];
+  const combinedEffects = useMemo(() => getCombinedBuffs(equippedPets), [equippedPets]);
 
   const xpRange = gamification.xpForNextLevel - gamification.xpForCurrentLevel;
   const xpProgress = xpRange > 0 ? ((gamification.xp - gamification.xpForCurrentLevel) / xpRange) * 100 : 0;
-
-  const handleFeed = () => {
-    const result = feedPet();
-    result.success ? success(result.message) : error(result.message);
-  };
-
-  const handlePlay = () => {
-    const result = playWithPet();
-    result.success ? success(result.message) : error(result.message);
-  };
-
-  const handleRename = (e) => {
-    e.preventDefault();
-    if (!petNameInput.trim()) {
-      error('Pet name cannot be empty');
-      return;
-    }
-    renamePet(petNameInput.trim());
-    success('Pet renamed!');
-    setIsRenaming(false);
-  };
-
-  const moodColor = gamification.pet.energy > 70 ? 'text-green-500' : gamification.pet.energy > 40 ? 'text-yellow-500' : 'text-red-500';
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -91,80 +126,122 @@ const GamificationPanel = () => {
 
       {/* Pet Panel */}
       <div className="card flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <PawPrint className="text-primary-500" />
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  {gamification.pet.name}
-                </h3>
-                <span className={`text-xs font-medium ${moodColor}`}>
-                  {gamification.pet.mood}
-                </span>
-              </div>
-              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${rarityBadgeStyles[gamification.pet.rarity] || rarityBadgeStyles.Common}`}>
-                {gamification.pet.rarity}
-              </span>
-            </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <PawPrint className="text-primary-500" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              {equippedPets.length > 0 ? `Equipped Pets (${equippedPets.length}/3)` : 'No Pets Equipped'}
+            </h3>
+          </div>
           <button
-            onClick={() => setIsRenaming(!isRenaming)}
+            onClick={() => setActiveTab('pets')}
             className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
           >
-            {isRenaming ? 'Cancel' : 'Rename'}
+            Manage
           </button>
         </div>
-        {isRenaming && (
-          <form onSubmit={handleRename} className="flex gap-2">
-            <input
-              type="text"
-              value={petNameInput}
-              onChange={(e) => setPetNameInput(e.target.value)}
-              className="input-field"
-              placeholder="Pet name"
-            />
-            <button type="submit" className="btn-primary">
-              Save
+
+        {firstEquippedPet ? (
+          <>
+            <div className="flex items-center gap-4">
+              <div
+                className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl animate-bounce-subtle shadow-inner"
+                style={{ background: `${firstEquippedPet.color || '#0ea5e9'}20` }}
+              >
+                {firstEquippedPet.species || '🐾'}
+              </div>
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-900 dark:text-white">{firstEquippedPet.name}</span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${rarityBadgeStyles[firstEquippedPet.rarity] || rarityBadgeStyles.Common}`}>
+                    {firstEquippedPet.rarity}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Energy</p>
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div
+                      className="bg-green-500 h-2 rounded-full transition-all duration-700"
+                      style={{ width: `${firstEquippedPet.energy || 70}%` }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Hunger</p>
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div
+                      className="bg-orange-500 h-2 rounded-full transition-all duration-700"
+                      style={{ width: `${firstEquippedPet.hunger || 30}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            {equippedPets.length > 1 && (
+              <div className="text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-700">
+                +{equippedPets.length - 1} more pet{equippedPets.length - 1 > 1 ? 's' : ''} equipped
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-center py-6 text-gray-500 dark:text-gray-400">
+            <PawPrint className="mx-auto mb-2" size={32} />
+            <p className="text-sm">No pets equipped</p>
+            <button
+              onClick={() => setActiveTab('pets')}
+              className="btn-primary mt-3 text-xs"
+            >
+              Equip Pets
             </button>
-          </form>
+          </div>
         )}
-        <div className="flex items-center gap-4">
-          <div
-            className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl animate-bounce-subtle shadow-inner"
-            style={{ background: `${gamification.pet.color || '#0ea5e9'}20` }}
-          >
-            {gamification.pet.species || '🐾'}
-          </div>
-          <div className="flex-1 space-y-2">
-            <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Energy</p>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div
-                  className="bg-green-500 h-2 rounded-full transition-all duration-700"
-                  style={{ width: `${gamification.pet.energy}%` }}
-                />
-              </div>
+
+        {/* Combined Effects */}
+        {equippedPets.length > 0 && (
+          <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+            <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-2">
+              Combined Effects
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {combinedEffects.buffs.xpBoost > 0 && (
+                <div className="flex items-center justify-between text-xs bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded">
+                  <div className="flex items-center gap-1 text-green-700 dark:text-green-400">
+                    <TrendingUp size={10} />
+                    <span>XP</span>
+                  </div>
+                  <span className="font-semibold text-green-600 dark:text-green-400">+{combinedEffects.buffs.xpBoost}%</span>
+                </div>
+              )}
+              {combinedEffects.buffs.coinBoost > 0 && (
+                <div className="flex items-center justify-between text-xs bg-yellow-50 dark:bg-yellow-900/20 px-2 py-1 rounded">
+                  <div className="flex items-center gap-1 text-yellow-700 dark:text-yellow-400">
+                    <DollarSign size={10} />
+                    <span>Coins</span>
+                  </div>
+                  <span className="font-semibold text-yellow-600 dark:text-yellow-400">+{combinedEffects.buffs.coinBoost}%</span>
+                </div>
+              )}
+              {combinedEffects.buffs.discount > 0 && (
+                <div className="flex items-center justify-between text-xs bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
+                  <div className="flex items-center gap-1 text-blue-700 dark:text-blue-400">
+                    <Percent size={10} />
+                    <span>Discount</span>
+                  </div>
+                  <span className="font-semibold text-blue-600 dark:text-blue-400">-{combinedEffects.buffs.discount}%</span>
+                </div>
+              )}
+              {combinedEffects.buffs.luckBoost > 0 && (
+                <div className="flex items-center justify-between text-xs bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded">
+                  <div className="flex items-center gap-1 text-purple-700 dark:text-purple-400">
+                    <Star size={10} />
+                    <span>Luck</span>
+                  </div>
+                  <span className="font-semibold text-purple-600 dark:text-purple-400">+{combinedEffects.buffs.luckBoost}%</span>
+                </div>
+              )}
             </div>
-            <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Hunger</p>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div
-                  className="bg-orange-500 h-2 rounded-full transition-all duration-700"
-                  style={{ width: `${gamification.pet.hunger}%` }}
-                />
-              </div>
-            </div>
           </div>
-        </div>
-        <div className="flex gap-3">
-          <button onClick={handleFeed} className="btn-secondary flex-1 flex items-center justify-center gap-2 ripple">
-            <Bone size={16} />
-            Feed (-5 coins)
-          </button>
-          <button onClick={handlePlay} className="btn-primary flex-1 flex items-center justify-center gap-2 ripple">
-            <Wand2 size={16} />
-            Play
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );
