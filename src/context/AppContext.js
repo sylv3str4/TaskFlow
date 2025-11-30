@@ -1677,32 +1677,30 @@ export const AppProvider = ({ children }) => {
       // Update feed count
       const feedCount = (state.gamification.feedCount || 0) + actualQuantity;
       
-      // Update pet stats
-      dispatch({
-        type: ActionTypes.UPDATE_PET,
-        payload: {
-          petId,
-          petChanges: {
-            hunger: Math.max(0, pet.hunger - food.hungerReduction * actualQuantity),
-            energy: Math.min(100, (pet.energy || 70) + food.energyBoost * actualQuantity),
+      // Calculate new pet stats
+      const currentHunger = pet.hunger || 30;
+      const currentEnergy = pet.energy || 70;
+      const newHunger = Math.max(0, currentHunger - food.hungerReduction * actualQuantity);
+      const newEnergy = Math.min(100, currentEnergy + food.energyBoost * actualQuantity);
+      
+      // Update pet inventory with new stats
+      const updatedPetInventory = (state.gamification.petInventory || []).map(p => {
+        if (p.id === petId) {
+          return {
+            ...p,
+            hunger: newHunger,
+            energy: newEnergy,
             mood: food.mood,
-          },
-        },
-        userId,
+          };
+        }
+        return p;
       });
       
-      dispatch({ type: ActionTypes.UPDATE_INVENTORY, payload: newInventory, userId });
-      dispatch({
-        type: ActionTypes.UPDATE_PET,
-        payload: {
-          coinsChange: 0, // No coin change, just update feed count
-        },
-        userId,
-      });
-      
-      // Update feed count separately
+      // Update everything together: pet stats, inventory, and feed count
       const updatedGamification = {
         ...state.gamification,
+        petInventory: updatedPetInventory,
+        inventory: newInventory,
         feedCount,
       };
       saveGamification(updatedGamification, userId);

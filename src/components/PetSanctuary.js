@@ -26,6 +26,8 @@ import {
   X,
   Plus,
   Check,
+  Search,
+  ArrowUpDown,
 } from 'lucide-react';
 import { FOOD_ITEMS } from './Shop';
 
@@ -46,6 +48,15 @@ const rarityChances = [
   { rarity: 'Rare', chance: 30, color: 'text-blue-500' },
   { rarity: 'Common', chance: 43, color: 'text-gray-500' },
 ];
+
+const rarityOrder = {
+  'Secret': 0,
+  'Mythical': 1,
+  'Legendary': 2,
+  'Epic': 3,
+  'Rare': 4,
+  'Common': 5,
+};
 
 const SPIN_COST = 25;
 const PITY_THRESHOLD = 10;
@@ -115,6 +126,9 @@ const PetSanctuary = () => {
   const [selectedPetId, setSelectedPetId] = useState(null);
   const [selectedFoodId, setSelectedFoodId] = useState(null);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
+  const [petSearchQuery, setPetSearchQuery] = useState('');
+  const [petSortBy, setPetSortBy] = useState('rarity');
+  const [isSpinning10, setIsSpinning10] = useState(false);
 
   const petInventory = gamification.petInventory || [];
   const equippedPets = useMemo(() => {
@@ -123,10 +137,43 @@ const PetSanctuary = () => {
       .filter(Boolean);
   }, [gamification.equippedPets, petInventory]);
 
+  const sortedAndFilteredPets = useMemo(() => {
+    const equippedIds = new Set(gamification.equippedPets || []);
+    let filtered = petInventory;
+    
+    if (petSearchQuery) {
+      const query = petSearchQuery.toLowerCase();
+      filtered = filtered.filter(pet => 
+        pet.name.toLowerCase().includes(query) ||
+        pet.rarity.toLowerCase().includes(query) ||
+        (pet.species || '').includes(query)
+      );
+    }
+    
+    const sorted = [...filtered].sort((a, b) => {
+      const aEquipped = equippedIds.has(a.id);
+      const bEquipped = equippedIds.has(b.id);
+      
+      if (aEquipped && !bEquipped) return -1;
+      if (!aEquipped && bEquipped) return 1;
+      
+      if (petSortBy === 'rarity') {
+        return (rarityOrder[a.rarity] || 99) - (rarityOrder[b.rarity] || 99);
+      } else if (petSortBy === 'name') {
+        return a.name.localeCompare(b.name);
+      } else if (petSortBy === 'level') {
+        return (b.level || 1) - (a.level || 1);
+      }
+      return 0;
+    });
+    
+    return sorted;
+  }, [petInventory, petSearchQuery, petSortBy, gamification.equippedPets]);
+
   const combinedEffects = useMemo(() => getCombinedBuffs(equippedPets), [equippedPets]);
 
   const handleSpin = () => {
-    if (isSpinning) return;
+    if (isSpinning || isSpinning10) return;
     const spinCost = getSpinCost ? getSpinCost() : SPIN_COST;
     if (gamification.coins < spinCost) {
       error(`You need ${spinCost} coins to spin.`);
@@ -150,6 +197,37 @@ const PetSanctuary = () => {
       }
       setIsSpinning(false);
     }, 1200);
+  };
+
+  const handleSpin10 = async () => {
+    if (isSpinning || isSpinning10) return;
+    const spinCost = getSpinCost ? getSpinCost() : SPIN_COST;
+    const totalCost = spinCost * 10;
+    if (gamification.coins < totalCost) {
+      error(`You need ${totalCost} coins to spin 10 times.`);
+      return;
+    }
+    setIsSpinning10(true);
+    const rewards = [];
+    try {
+      for (let i = 0; i < 10; i++) {
+        const result = spinForPet();
+        if (result.success && result.reward) {
+          rewards.push(result.reward);
+        }
+        if (i < 9) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      }
+      const rareCount = rewards.filter(r => r && ['Rare', 'Epic', 'Legendary', 'Mythical', 'Secret'].includes(r.rarity)).length;
+      success(`Spun 10 times! Got ${rewards.length} pets (${rareCount} rare+). Check your inventory!`);
+      setInventoryTab('pets');
+      setShowInventory(true);
+    } catch (err) {
+      error('Error during spin 10: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsSpinning10(false);
+    }
   };
 
   const inventory = gamification.inventory || {};
@@ -235,7 +313,7 @@ const PetSanctuary = () => {
   const themeColors = getThemeColors(currentTheme);
 
   return (
-    <div className="space-y-6 animate-fade-in page-enter">
+    <div className="space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -528,10 +606,10 @@ const PetSanctuary = () => {
               background: `linear-gradient(135deg, var(--theme-color-from, rgb(14, 165, 233)) 0%, var(--theme-color-via, rgb(14, 165, 233)) 50%, var(--theme-color-to, rgb(3, 105, 161)) 100%)`
             }}
           >
-            <div className={`text-7xl ${isSpinning ? 'animate-spin-slow' : 'animate-bounce-subtle'}`}>
+            <div className={`text-7xl ${isSpinning ? 'animate-spin' : ''}`} style={{ animationDuration: '2s' }}>
               {isSpinning ? '🎁' : (equippedPets[0]?.species || '🐾')}
             </div>
-            <div className="absolute inset-0 bg-white/10 animate-pulse-slow" />
+            {isSpinning && <div className="absolute inset-0 bg-white/10" />}
           </div>
 
           <div className="grid grid-cols-2 gap-3 text-sm">
@@ -555,23 +633,42 @@ const PetSanctuary = () => {
             </div>
           </div>
 
-          <button
-            onClick={handleSpin}
-            disabled={isSpinning || gamification.coins < (getSpinCost ? getSpinCost() : SPIN_COST)}
-            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {isSpinning ? (
-              <>
-                <RefreshCcw className="animate-spin" size={18} />
-                Spinning...
-              </>
-            ) : (
-              <>
-                <Gift size={18} />
-                Spin for new pet
-              </>
-            )}
-          </button>
+          <div className="space-y-2">
+            <button
+              onClick={handleSpin}
+              disabled={isSpinning || isSpinning10 || gamification.coins < (getSpinCost ? getSpinCost() : SPIN_COST)}
+              className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isSpinning ? (
+                <>
+                  <RefreshCcw className="animate-spin" size={18} />
+                  Spinning...
+                </>
+              ) : (
+                <>
+                  <Gift size={18} />
+                  Spin for new pet
+                </>
+              )}
+            </button>
+            <button
+              onClick={handleSpin10}
+              disabled={isSpinning || isSpinning10 || gamification.coins < ((getSpinCost ? getSpinCost() : SPIN_COST) * 10)}
+              className="btn-secondary w-full flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isSpinning10 ? (
+                <>
+                  <RefreshCcw className="animate-spin" size={18} />
+                  Spinning 10x...
+                </>
+              ) : (
+                <>
+                  <Gift size={18} />
+                  Spin 10 Times ({(getSpinCost ? getSpinCost() : SPIN_COST) * 10} coins)
+                </>
+              )}
+            </button>
+          </div>
 
           <div className="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-3">
             <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">Rarity Chances</p>
@@ -634,8 +731,8 @@ const PetSanctuary = () => {
 
       {/* Unified Inventory Modal */}
       {showInventory && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animate-fade-in backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-4xl w-full p-6 animate-scale-in max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <Backpack className="icon-theme" size={28} />
@@ -699,15 +796,51 @@ const PetSanctuary = () => {
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {petInventory.map((pet) => {
+                  <>
+                    <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                      <div className="flex-1 relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                          type="text"
+                          placeholder="Search pets by name, rarity, or species..."
+                          value={petSearchQuery}
+                          onChange={(e) => setPetSearchQuery(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                      </div>
+                      <div className="relative">
+                        <ArrowUpDown className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                        <select
+                          value={petSortBy}
+                          onChange={(e) => setPetSortBy(e.target.value)}
+                          className="pl-10 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 appearance-none"
+                        >
+                          <option value="rarity">Sort by Rarity</option>
+                          <option value="name">Sort by Name</option>
+                          <option value="level">Sort by Level</option>
+                        </select>
+                      </div>
+                    </div>
+                    {sortedAndFilteredPets.length === 0 ? (
+                      <div className="text-center py-12">
+                        <Search className="text-gray-400 mx-auto mb-4" size={48} />
+                        <p className="text-lg font-medium text-gray-500 dark:text-gray-400 mb-2">
+                          No pets found
+                        </p>
+                        <p className="text-sm text-gray-400 dark:text-gray-500">
+                          Try adjusting your search or filter
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {sortedAndFilteredPets.map((pet) => {
                       const isEquipped = equippedPets.some(ep => ep.id === pet.id);
                       const rarityStyle = rarityStyles[pet.rarity] || rarityStyles.Common;
                       
                       return (
                         <div
                           key={pet.id}
-                          className={`card p-4 border-2 transition-all ${
+                          className={`card p-4 border-2 ${
                             isEquipped 
                               ? 'border-green-400 dark:border-green-600 bg-green-50 dark:bg-green-900/20' 
                               : 'border-gray-200 dark:border-gray-700'
@@ -799,7 +932,9 @@ const PetSanctuary = () => {
                         </div>
                       );
                     })}
-                  </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -819,7 +954,7 @@ const PetSanctuary = () => {
                         return (
                           <div
                             key={food.id}
-                            className="card p-4 border-2 transition-all duration-200"
+                            className="card p-4 border-2"
                             style={{
                               borderColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.3)',
                             }}
@@ -892,8 +1027,8 @@ const PetSanctuary = () => {
 
       {/* Feed Modal */}
       {showFeedModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animate-fade-in backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-scale-in max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <Bone className="icon-theme" size={22} />
