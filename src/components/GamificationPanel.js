@@ -42,8 +42,6 @@ const getCombinedBuffs = (equippedPets) => {
   const combinedBuffs = {
     xpBoost: 0,
     coinBoost: 0,
-    discount: 0,
-    luckBoost: 0,
   };
   const combinedDebuffs = {
     xpPenalty: 0,
@@ -58,8 +56,6 @@ const getCombinedBuffs = (equippedPets) => {
     
     combinedBuffs.xpBoost += scaledBuffs.xpBoost || 0;
     combinedBuffs.coinBoost += scaledBuffs.coinBoost || 0;
-    combinedBuffs.discount += scaledBuffs.discount || 0;
-    combinedBuffs.luckBoost += scaledBuffs.luckBoost || 0;
     
     combinedDebuffs.xpPenalty += scaledDebuffs.xpPenalty || 0;
     combinedDebuffs.coinPenalty += scaledDebuffs.coinPenalty || 0;
@@ -219,24 +215,6 @@ const GamificationPanel = () => {
                     <span>Coins</span>
                   </div>
                   <span className="font-semibold text-yellow-600 dark:text-yellow-400">+{combinedEffects.buffs.coinBoost}%</span>
-                </div>
-              )}
-              {combinedEffects.buffs.discount > 0 && (
-                <div className="flex items-center justify-between text-xs bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
-                  <div className="flex items-center gap-1 text-blue-700 dark:text-blue-400">
-                    <Percent size={10} />
-                    <span>Discount</span>
-                  </div>
-                  <span className="font-semibold text-blue-600 dark:text-blue-400">-{combinedEffects.buffs.discount}%</span>
-                </div>
-              )}
-              {combinedEffects.buffs.luckBoost > 0 && (
-                <div className="flex items-center justify-between text-xs bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded">
-                  <div className="flex items-center gap-1 text-purple-700 dark:text-purple-400">
-                    <Star size={10} />
-                    <span>Luck</span>
-                  </div>
-                  <span className="font-semibold text-purple-600 dark:text-purple-400">+{combinedEffects.buffs.luckBoost}%</span>
                 </div>
               )}
             </div>

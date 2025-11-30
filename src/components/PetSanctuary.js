@@ -28,6 +28,9 @@ import {
   Check,
   Search,
   ArrowUpDown,
+  Trash2,
+  Settings,
+  Info,
 } from 'lucide-react';
 import { FOOD_ITEMS } from './Shop';
 
@@ -37,11 +40,11 @@ const rarityStyles = {
   Epic: 'text-purple-500 bg-purple-100 dark:bg-purple-900/40',
   Legendary: 'text-yellow-500 bg-yellow-100 dark:bg-yellow-900/30',
   Mythical: 'text-pink-500 bg-pink-100 dark:bg-pink-900/30',
-  Secret: 'text-gray-900 dark:text-gray-100 bg-gray-800 dark:bg-gray-900 border-2 border-gray-400 dark:border-gray-500',
+  Secret: 'text-orange-500 bg-orange-100 dark:bg-orange-900/30 border-2 border-orange-400 dark:border-orange-600',
 };
 
 const rarityChances = [
-  { rarity: 'Secret', chance: 0.5, color: 'text-gray-900 dark:text-gray-100' },
+  { rarity: 'Secret', chance: 0.5, color: 'text-orange-500' },
   { rarity: 'Mythical', chance: 3.5, color: 'text-pink-500' },
   { rarity: 'Legendary', chance: 5, color: 'text-yellow-500' },
   { rarity: 'Epic', chance: 18, color: 'text-purple-500' },
@@ -58,7 +61,7 @@ const rarityOrder = {
   'Common': 5,
 };
 
-const SPIN_COST = 25;
+const SPIN_COST = 150;
 const PITY_THRESHOLD = 10;
 
 // Helper function to scale buffs/debuffs for level (same as in AppContext)
@@ -87,8 +90,6 @@ const getCombinedBuffs = (equippedPets) => {
   const combinedBuffs = {
     xpBoost: 0,
     coinBoost: 0,
-    discount: 0,
-    luckBoost: 0,
   };
   const combinedDebuffs = {
     xpPenalty: 0,
@@ -103,8 +104,6 @@ const getCombinedBuffs = (equippedPets) => {
     
     combinedBuffs.xpBoost += scaledBuffs.xpBoost || 0;
     combinedBuffs.coinBoost += scaledBuffs.coinBoost || 0;
-    combinedBuffs.discount += scaledBuffs.discount || 0;
-    combinedBuffs.luckBoost += scaledBuffs.luckBoost || 0;
     
     combinedDebuffs.xpPenalty += scaledDebuffs.xpPenalty || 0;
     combinedDebuffs.coinPenalty += scaledDebuffs.coinPenalty || 0;
@@ -116,7 +115,7 @@ const getCombinedBuffs = (equippedPets) => {
 };
 
 const PetSanctuary = () => {
-  const { gamification, spinForPet, feedPet, playWithPet, equipPet, unequipPet, getFoodCost, getSpinCost, setActiveTab } = useApp();
+  const { gamification, spinForPet, feedPet, playWithPet, equipPet, unequipPet, deletePet, getFoodCost, getSpinCost, setActiveTab } = useApp();
   const { success, error } = useToast();
   const [isSpinning, setIsSpinning] = useState(false);
   const [lastReward, setLastReward] = useState(null);
@@ -129,6 +128,11 @@ const PetSanctuary = () => {
   const [petSearchQuery, setPetSearchQuery] = useState('');
   const [petSortBy, setPetSortBy] = useState('rarity');
   const [isSpinning10, setIsSpinning10] = useState(false);
+  const [selectedPets, setSelectedPets] = useState(new Set());
+  const [isMassDeleteMode, setIsMassDeleteMode] = useState(false);
+  const [autoDeleteRarities, setAutoDeleteRarities] = useState(new Set(['Common']));
+  const [showAutoDeleteSettings, setShowAutoDeleteSettings] = useState(false);
+  const [showPetInfo, setShowPetInfo] = useState(false);
 
   const petInventory = gamification.petInventory || [];
   const equippedPets = useMemo(() => {
@@ -184,14 +188,30 @@ const PetSanctuary = () => {
       const result = spinForPet();
       if (result.success) {
         setLastReward(result.reward);
-        const wasPityUsed = (gamification.pityCounter || 0) >= PITY_THRESHOLD;
-        if (wasPityUsed) {
-          success(`Pity system activated! Guaranteed rare+ pet! You got ${result.reward.name}!`);
+        const newPet = result.reward;
+        
+        // Auto-delete if rarity is in auto-delete list (but not if equipped)
+        const equippedIds = new Set(gamification.equippedPets || []);
+        if (autoDeleteRarities.has(newPet.rarity) && !equippedIds.has(newPet.id)) {
+          setTimeout(() => {
+            deletePet(newPet.id);
+            const wasPityUsed = (gamification.pityCounter || 0) >= PITY_THRESHOLD;
+            if (wasPityUsed) {
+              success(`Pity system activated! Got ${newPet.name} (${newPet.rarity}) but it was auto-deleted.`);
+            } else {
+              success(`Got ${newPet.name} (${newPet.rarity}) but it was auto-deleted.`);
+            }
+          }, 200);
         } else {
-          success(`You got ${result.reward.name}! Check your inventory.`);
+          const wasPityUsed = (gamification.pityCounter || 0) >= PITY_THRESHOLD;
+          if (wasPityUsed) {
+            success(`Pity system activated! Guaranteed rare+ pet! You got ${newPet.name}!`);
+          } else {
+            success(`You got ${newPet.name}! Check your inventory.`);
+          }
+          setInventoryTab('pets');
+          setShowInventory(true);
         }
-        setInventoryTab('pets');
-        setShowInventory(true);
       } else {
         error(result.message);
       }
@@ -209,18 +229,41 @@ const PetSanctuary = () => {
     }
     setIsSpinning10(true);
     const rewards = [];
+    const petIdsToDelete = [];
+    const equippedIds = new Set(gamification.equippedPets || []);
+    
     try {
       for (let i = 0; i < 10; i++) {
         const result = spinForPet();
         if (result.success && result.reward) {
-          rewards.push(result.reward);
+          const newPet = result.reward;
+          rewards.push(newPet);
+          
+          // Mark for auto-delete if rarity matches (but not if equipped)
+          if (autoDeleteRarities.has(newPet.rarity) && !equippedIds.has(newPet.id)) {
+            petIdsToDelete.push(newPet.id);
+          }
         }
         if (i < 9) {
           await new Promise(resolve => setTimeout(resolve, 200));
         }
       }
-      const rareCount = rewards.filter(r => r && ['Rare', 'Epic', 'Legendary', 'Mythical', 'Secret'].includes(r.rarity)).length;
-      success(`Spun 10 times! Got ${rewards.length} pets (${rareCount} rare+). Check your inventory!`);
+      
+      // Auto-delete after all spins complete
+      if (petIdsToDelete.length > 0) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        deletePet(petIdsToDelete);
+      }
+      
+      const keptPets = rewards.filter(r => r && (!autoDeleteRarities.has(r.rarity) || equippedIds.has(r.id)));
+      const rareCount = keptPets.filter(r => r && ['Rare', 'Epic', 'Legendary', 'Mythical', 'Secret'].includes(r.rarity)).length;
+      
+      let message = `Spun 10 times! Got ${rewards.length} pets`;
+      if (petIdsToDelete.length > 0) {
+        message += ` (${petIdsToDelete.length} auto-deleted, ${keptPets.length} kept)`;
+      }
+      message += ` - ${rareCount} rare+ kept. Check your inventory!`;
+      success(message);
       setInventoryTab('pets');
       setShowInventory(true);
     } catch (err) {
@@ -307,6 +350,71 @@ const PetSanctuary = () => {
   const handleUnequipPet = (petId) => {
     unequipPet(petId);
     success('Pet unequipped!');
+  };
+
+  const handleDeletePet = (petId) => {
+    const pet = petInventory.find(p => p.id === petId);
+    if (!pet) return;
+    
+    const isEquipped = equippedPets.some(ep => ep.id === petId);
+    if (isEquipped) {
+      error('Please unequip the pet before deleting it.');
+      return;
+    }
+    
+    if (window.confirm(`Are you sure you want to delete ${pet.name}? This action cannot be undone.`)) {
+      deletePet(petId);
+      success(`${pet.name} has been deleted.`);
+      setSelectedPets(new Set());
+    }
+  };
+
+  const handleTogglePetSelection = (petId) => {
+    const isEquipped = equippedPets.some(ep => ep.id === petId);
+    if (isEquipped) {
+      error('Cannot select equipped pets. Please unequip them first.');
+      return;
+    }
+    
+    const newSelected = new Set(selectedPets);
+    if (newSelected.has(petId)) {
+      newSelected.delete(petId);
+    } else {
+      newSelected.add(petId);
+    }
+    setSelectedPets(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    const equippedIds = new Set(gamification.equippedPets || []);
+    const unEquippedPets = sortedAndFilteredPets.filter(p => !equippedIds.has(p.id));
+    
+    if (selectedPets.size === unEquippedPets.length) {
+      setSelectedPets(new Set());
+    } else {
+      setSelectedPets(new Set(unEquippedPets.map(p => p.id)));
+    }
+  };
+
+  const handleMassDelete = () => {
+    if (selectedPets.size === 0) return;
+    
+    const petsToDelete = sortedAndFilteredPets.filter(p => selectedPets.has(p.id));
+    const equippedToDelete = petsToDelete.filter(p => equippedPets.some(ep => ep.id === p.id));
+    
+    if (equippedToDelete.length > 0) {
+      error(`Cannot delete equipped pets. Please unequip ${equippedToDelete.map(p => p.name).join(', ')} first.`);
+      return;
+    }
+    
+    const petNames = petsToDelete.map(p => p.name).join(', ');
+    
+    if (window.confirm(`Are you sure you want to delete ${selectedPets.size} pet(s)?\n\n${petNames}\n\nThis action cannot be undone.`)) {
+      deletePet(Array.from(selectedPets));
+      success(`Deleted ${selectedPets.size} pet(s).`);
+      setSelectedPets(new Set());
+      setIsMassDeleteMode(false);
+    }
   };
 
   const currentTheme = gamification?.currentTheme || 'default';
@@ -528,24 +636,6 @@ const PetSanctuary = () => {
                   <span className="font-semibold text-yellow-600 dark:text-yellow-400">+{combinedEffects.buffs.coinBoost}%</span>
                 </div>
               )}
-              {combinedEffects.buffs.discount > 0 && (
-                <div className="flex items-center justify-between text-xs bg-blue-50 dark:bg-blue-900/20 px-3 py-2 rounded-lg">
-                  <div className="flex items-center gap-1 text-blue-700 dark:text-blue-400">
-                    <Percent size={12} />
-                    <span className="font-medium">Discount</span>
-                  </div>
-                  <span className="font-semibold text-blue-600 dark:text-blue-400">-{combinedEffects.buffs.discount}%</span>
-                </div>
-              )}
-              {combinedEffects.buffs.luckBoost > 0 && (
-                <div className="flex items-center justify-between text-xs bg-purple-50 dark:bg-purple-900/20 px-3 py-2 rounded-lg">
-                  <div className="flex items-center gap-1 text-purple-700 dark:text-purple-400">
-                    <Star size={12} />
-                    <span className="font-medium">Luck Boost</span>
-                  </div>
-                  <span className="font-semibold text-purple-600 dark:text-purple-400">+{combinedEffects.buffs.luckBoost}%</span>
-                </div>
-              )}
               {combinedEffects.debuffs.xpPenalty > 0 && (
                 <div className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
                   <div className="flex items-center gap-1 text-red-700 dark:text-red-400">
@@ -597,6 +687,43 @@ const PetSanctuary = () => {
                 Lucky Spin
                 <Sparkles className="icon-theme" size={20} />
               </h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowPetInfo(true)}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                title="Pet Rarity Info"
+                style={{
+                  color: 'var(--theme-icon-color, rgb(14, 165, 233))',
+                }}
+              >
+                <Info size={20} />
+              </button>
+              <button
+                onClick={() => setShowAutoDeleteSettings(true)}
+                className={`relative p-2 rounded-lg hover:bg-opacity-10 dark:hover:bg-opacity-20 transition-colors ${
+                  autoDeleteRarities.size > 0
+                    ? ''
+                    : ''
+                }`}
+                title={`Auto-delete settings (${autoDeleteRarities.size} rarities selected)`}
+                style={{
+                  color: autoDeleteRarities.size > 0 
+                    ? 'var(--theme-icon-color, rgb(14, 165, 233))' 
+                    : 'var(--theme-icon-color, rgb(14, 165, 233))',
+                  backgroundColor: autoDeleteRarities.size > 0 
+                    ? 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.1)' 
+                    : 'transparent',
+                }}
+              >
+                <Settings size={20} />
+                {autoDeleteRarities.size > 0 && (
+                  <span 
+                    className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white dark:border-gray-800"
+                    style={{ backgroundColor: 'var(--theme-icon-color, rgb(14, 165, 233))' }}
+                  ></span>
+                )}
+              </button>
             </div>
           </div>
 
@@ -685,6 +812,7 @@ const PetSanctuary = () => {
             </div>
           </div>
 
+
           {lastReward && (
             <div className="rounded-xl border border-dashed p-3 text-sm text-gray-600 dark:text-gray-300 flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50">
               <Wand2 size={16} className="icon-theme" />
@@ -732,7 +860,7 @@ const PetSanctuary = () => {
       {/* Unified Inventory Modal */}
       {showInventory && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto border-2" style={{ borderColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.3)' }}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <Backpack className="icon-theme" size={28} />
@@ -752,32 +880,38 @@ const PetSanctuary = () => {
                 onClick={() => setInventoryTab('pets')}
                 className={`px-4 py-2 font-semibold text-sm transition-colors relative ${
                   inventoryTab === 'pets'
-                    ? 'text-primary-600 dark:text-primary-400'
+                    ? ''
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
+                style={{
+                  color: inventoryTab === 'pets' ? 'var(--theme-icon-color, rgb(14, 165, 233))' : undefined,
+                }}
               >
                 <span className="flex items-center gap-2">
                   <PawPrint size={18} />
                   Pets ({petInventory.length})
                 </span>
                 {inventoryTab === 'pets' && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 dark:bg-primary-400" />
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: 'var(--theme-icon-color, rgb(14, 165, 233))' }} />
                 )}
               </button>
               <button
                 onClick={() => setInventoryTab('food')}
                 className={`px-4 py-2 font-semibold text-sm transition-colors relative ${
                   inventoryTab === 'food'
-                    ? 'text-primary-600 dark:text-primary-400'
+                    ? ''
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
+                style={{
+                  color: inventoryTab === 'food' ? 'var(--theme-icon-color, rgb(14, 165, 233))' : undefined,
+                }}
               >
                 <span className="flex items-center gap-2">
                   <Bone size={18} />
                   Food ({Object.values(inventory).reduce((sum, qty) => sum + qty, 0)})
                 </span>
                 {inventoryTab === 'food' && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 dark:bg-primary-400" />
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: 'var(--theme-icon-color, rgb(14, 165, 233))' }} />
                 )}
               </button>
             </div>
@@ -820,7 +954,56 @@ const PetSanctuary = () => {
                           <option value="level">Sort by Level</option>
                         </select>
                       </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setIsMassDeleteMode(!isMassDeleteMode);
+                            setSelectedPets(new Set());
+                          }}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            isMassDeleteMode
+                              ? 'bg-red-600 hover:bg-red-700 text-white'
+                              : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
+                          }`}
+                        >
+                          <Trash2 size={16} className="inline mr-1" />
+                          {isMassDeleteMode ? 'Cancel' : 'Delete'}
+                        </button>
+                        {isMassDeleteMode && selectedPets.size > 0 && (
+                          <button
+                            onClick={handleMassDelete}
+                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium flex items-center gap-2"
+                          >
+                            <Trash2 size={16} />
+                            Delete ({selectedPets.size})
+                          </button>
+                        )}
+                      </div>
                     </div>
+                    {isMassDeleteMode && (() => {
+                      const equippedIds = new Set(gamification.equippedPets || []);
+                      const unEquippedPets = sortedAndFilteredPets.filter(p => !equippedIds.has(p.id));
+                      const allUnEquippedSelected = unEquippedPets.length > 0 && selectedPets.size === unEquippedPets.length;
+                      
+                      return (
+                        <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={allUnEquippedSelected}
+                              onChange={handleSelectAll}
+                              className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+                            />
+                            <span className="text-sm text-gray-700 dark:text-gray-300">
+                              Select all unequipped ({selectedPets.size} selected)
+                            </span>
+                          </div>
+                          <span className="text-xs text-yellow-700 dark:text-yellow-400">
+                            Equipped pets cannot be deleted
+                          </span>
+                        </div>
+                      );
+                    })()}
                     {sortedAndFilteredPets.length === 0 ? (
                       <div className="text-center py-12">
                         <Search className="text-gray-400 mx-auto mb-4" size={48} />
@@ -837,30 +1020,54 @@ const PetSanctuary = () => {
                       const isEquipped = equippedPets.some(ep => ep.id === pet.id);
                       const rarityStyle = rarityStyles[pet.rarity] || rarityStyles.Common;
                       
+                      const isSelected = selectedPets.has(pet.id);
+                      
                       return (
                         <div
                           key={pet.id}
                           className={`card p-4 border-2 ${
-                            isEquipped 
+                            isSelected
+                              ? 'border-red-400 dark:border-red-600 bg-red-50 dark:bg-red-900/20'
+                              : isEquipped 
                               ? 'border-green-400 dark:border-green-600 bg-green-50 dark:bg-green-900/20' 
                               : 'border-gray-200 dark:border-gray-700'
                           }`}
                         >
                           <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-1">
+                              {isMassDeleteMode && (
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  disabled={isEquipped}
+                                  onChange={() => handleTogglePetSelection(pet.id)}
+                                  className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                />
+                              )}
                               <div className="w-10 h-10 rounded-lg bg-white dark:bg-gray-900 flex items-center justify-center text-xl">
                                 {pet.species || '🐾'}
                               </div>
-                              <div>
+                              <div className="flex-1 min-w-0">
                                 <h4 className="font-semibold text-gray-900 dark:text-white text-sm">{pet.name}</h4>
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${rarityStyle}`}>
                                   {pet.rarity}
                                 </span>
                               </div>
                             </div>
-                            {isEquipped && (
-                              <Check className="text-green-600 dark:text-green-400" size={18} />
-                            )}
+                            <div className="flex items-center gap-1">
+                              {isEquipped && !isMassDeleteMode && (
+                                <Check className="text-green-600 dark:text-green-400" size={18} />
+                              )}
+                              {!isMassDeleteMode && (
+                                <button
+                                  onClick={() => handleDeletePet(pet.id)}
+                                  className="p-1.5 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                                  title="Delete pet"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
+                            </div>
                           </div>
 
                           <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
@@ -887,48 +1094,55 @@ const PetSanctuary = () => {
                             </div>
                           </div>
 
-                          <div className="flex gap-2 mt-3">
-                            {isEquipped ? (
+                          {!isMassDeleteMode && (
+                            <div className="flex gap-2 mt-3">
+                              {isEquipped ? (
+                                <button
+                                  onClick={() => handleUnequipPet(pet.id)}
+                                  className="btn-secondary flex-1 text-xs py-1.5"
+                                >
+                                  Unequip
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleEquipPet(pet.id)}
+                                  disabled={equippedPets.length >= 3}
+                                  className="btn-primary flex-1 text-xs py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {equippedPets.length >= 3 ? 'Full' : 'Equip'}
+                                </button>
+                              )}
                               <button
-                                onClick={() => handleUnequipPet(pet.id)}
-                                className="btn-secondary flex-1 text-xs py-1.5"
+                                onClick={() => {
+                                  setShowInventory(false);
+                                  openFeedModal(pet.id);
+                                }}
+                                disabled={!hasFood}
+                                className="btn-secondary text-xs py-1.5 px-2 flex items-center justify-center gap-1.5"
+                                title={!hasFood ? 'Buy food first' : 'Feed'}
                               >
-                                Unequip
+                                <Bone size={14} />
+                                <span>Feed</span>
                               </button>
-                            ) : (
                               <button
-                                onClick={() => handleEquipPet(pet.id)}
-                                disabled={equippedPets.length >= 3}
-                                className="btn-primary flex-1 text-xs py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                onClick={() => {
+                                  setShowInventory(false);
+                                  handlePlay(pet.id);
+                                }}
+                                disabled={(pet.energy || 0) <= 0}
+                                className="btn-secondary text-xs py-1.5 px-2 flex items-center justify-center gap-1.5"
+                                title={(pet.energy || 0) <= 0 ? 'No energy' : 'Play'}
                               >
-                                {equippedPets.length >= 3 ? 'Full' : 'Equip'}
+                                <Heart size={14} />
+                                <span>Play</span>
                               </button>
-                            )}
-                            <button
-                              onClick={() => {
-                                setShowInventory(false);
-                                openFeedModal(pet.id);
-                              }}
-                              disabled={!hasFood}
-                              className="btn-secondary text-xs py-1.5 px-2 flex items-center justify-center gap-1.5"
-                              title={!hasFood ? 'Buy food first' : 'Feed'}
-                            >
-                              <Bone size={14} />
-                              <span>Feed</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                setShowInventory(false);
-                                handlePlay(pet.id);
-                              }}
-                              disabled={(pet.energy || 0) <= 0}
-                              className="btn-secondary text-xs py-1.5 px-2 flex items-center justify-center gap-1.5"
-                              title={(pet.energy || 0) <= 0 ? 'No energy' : 'Play'}
-                            >
-                              <Heart size={14} />
-                              <span>Play</span>
-                            </button>
-                          </div>
+                            </div>
+                          )}
+                          {isMassDeleteMode && isEquipped && (
+                            <div className="mt-3 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded text-xs text-yellow-700 dark:text-yellow-400">
+                              Unequip before deleting
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1028,7 +1242,7 @@ const PetSanctuary = () => {
       {/* Feed Modal */}
       {showFeedModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto border-2" style={{ borderColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.3)' }}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <Bone className="icon-theme" size={22} />
@@ -1037,6 +1251,7 @@ const PetSanctuary = () => {
               <button
                 onClick={() => setShowFeedModal(false)}
                 className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-all duration-200 transform hover:rotate-90 hover:scale-110"
+                style={{ color: 'var(--theme-icon-color, rgb(14, 165, 233))' }}
               >
                 <X size={24} />
               </button>
@@ -1081,7 +1296,7 @@ const PetSanctuary = () => {
                           }}
                           className={`text-left border rounded-xl p-3 flex flex-col gap-1 transition-all duration-200 ${
                             isSelected
-                              ? 'bg-gray-50 dark:bg-gray-800/60'
+                              ? 'bg-opacity-10 dark:bg-opacity-20'
                               : 'bg-gray-50 dark:bg-gray-800/60'
                           }`}
                           style={{
@@ -1089,6 +1304,9 @@ const PetSanctuary = () => {
                               ? 'var(--theme-icon-color, rgb(14, 165, 233))' 
                               : 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.3)',
                             borderWidth: isSelected ? '2px' : '1px',
+                            backgroundColor: isSelected 
+                              ? 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.1)' 
+                              : undefined,
                           }}
                         >
                           <div className="flex items-center gap-2">
@@ -1139,6 +1357,9 @@ const PetSanctuary = () => {
                                 value={clampedQuantity}
                                 onChange={(e) => setSelectedQuantity(parseInt(e.target.value, 10) || 1)}
                                 className="flex-1"
+                                style={{
+                                  accentColor: 'var(--theme-icon-color, rgb(14, 165, 233))',
+                                }}
                               />
                               <input
                                 type="number"
@@ -1179,6 +1400,241 @@ const PetSanctuary = () => {
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Auto-Delete Settings Modal */}
+      {showAutoDeleteSettings && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto border-2" style={{ borderColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.3)' }}>
+            <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-xl">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg" style={{ backgroundColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.1)' }}>
+                  <Settings className="icon-theme" size={20} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Auto-Delete Settings</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Choose which rarities to auto-delete</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAutoDeleteSettings(false)}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div className="flex items-start gap-2">
+                  <Sparkles className="text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" size={16} />
+                  <div className="text-sm text-blue-800 dark:text-blue-300">
+                    <p className="font-semibold mb-1">How it works:</p>
+                    <ul className="list-disc list-inside space-y-1 text-xs">
+                      <li>Selected rarities will be automatically deleted when you spin</li>
+                      <li>Equipped pets are never auto-deleted</li>
+                      <li>Works with both single spins and 10x spins</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Select Rarities</p>
+                  <span className="text-xs px-2 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded-full font-medium">
+                    {autoDeleteRarities.size} selected
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  {['Common', 'Rare', 'Epic', 'Legendary', 'Mythical', 'Secret'].map((rarity) => {
+                    const isSelected = autoDeleteRarities.has(rarity);
+                    return (
+                      <label
+                        key={rarity}
+                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md border cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700'
+                            : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            const newSet = new Set(autoDeleteRarities);
+                            if (e.target.checked) {
+                              newSet.add(rarity);
+                            } else {
+                              newSet.delete(rarity);
+                            }
+                            setAutoDeleteRarities(newSet);
+                          }}
+                          className="w-4 h-4 text-red-600 rounded focus:ring-1 focus:ring-red-500 focus:ring-offset-1 cursor-pointer accent-red-600 flex-shrink-0"
+                        />
+                        <div className="flex-1 flex items-center justify-between min-w-0">
+                          <span className={`text-xs font-medium ${rarityStyles[rarity] || ''}`}>{rarity}</span>
+                          {isSelected && (
+                            <Trash2 className="text-red-500 flex-shrink-0" size={14} />
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {autoDeleteRarities.size > 0 && (
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <span className="text-yellow-600 dark:text-yellow-400 text-lg">⚠️</span>
+                    <p className="text-xs text-yellow-800 dark:text-yellow-300">
+                      <span className="font-semibold">Warning:</span> Pets of selected rarities will be permanently deleted when spun. This action cannot be undone.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="sticky bottom-0 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-end gap-3 rounded-b-xl">
+              <button
+                onClick={() => {
+                  setAutoDeleteRarities(new Set(['Common']));
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                Reset to Default
+              </button>
+              <button
+                onClick={() => setShowAutoDeleteSettings(false)}
+                className="px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors"
+                style={{
+                  backgroundColor: 'var(--theme-icon-color, rgb(14, 165, 233))',
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.opacity = '0.9';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.opacity = '1';
+                }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pet Info Modal */}
+      {showPetInfo && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border-2" style={{ borderColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.3)' }}>
+            <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-xl">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg" style={{ backgroundColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.1)' }}>
+                  <Info className="icon-theme" size={20} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Pet Rarity Guide</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">All available pets organized by rarity</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPetInfo(false)}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {['Secret', 'Mythical', 'Legendary', 'Epic', 'Rare', 'Common'].map((rarity) => {
+                const petsInRarity = [
+                  // Common pets
+                  { name: 'Pixel', species: '🐾', rarity: 'Common', chance: 25 },
+                  { name: 'Pebble', species: '🐢', rarity: 'Common', chance: 20 },
+                  { name: 'Whiskers', species: '🐱', rarity: 'Common', chance: 15 },
+                  { name: 'Bubbles', species: '🐠', rarity: 'Common', chance: 12 },
+                  { name: 'Fluffy', species: '🐰', rarity: 'Common', chance: 10 },
+                  { name: 'Chirpy', species: '🐦', rarity: 'Common', chance: 8 },
+                  // Rare pets
+                  { name: 'Blossom', species: '🦊', rarity: 'Rare', chance: 18 },
+                  { name: 'Starling', species: '🕊️', rarity: 'Rare', chance: 15 },
+                  { name: 'Shadow', species: '🐺', rarity: 'Rare', chance: 12 },
+                  { name: 'Coral', species: '🦀', rarity: 'Rare', chance: 10 },
+                  { name: 'Frost', species: '🐧', rarity: 'Rare', chance: 8 },
+                  // Epic pets
+                  { name: 'Nimbus', species: '🦄', rarity: 'Epic', chance: 12 },
+                  { name: 'Ember', species: '🐲', rarity: 'Epic', chance: 10 },
+                  { name: 'Aurora', species: '🦋', rarity: 'Epic', chance: 8 },
+                  { name: 'Thunder', species: '⚡', rarity: 'Epic', chance: 6 },
+                  { name: 'Crystal', species: '💎', rarity: 'Epic', chance: 5 },
+                  // Legendary pets
+                  { name: 'Lumen', species: '🐉', rarity: 'Legendary', chance: 6 },
+                  { name: 'Phoenix', species: '🔥', rarity: 'Legendary', chance: 5 },
+                  { name: 'Titan', species: '🦁', rarity: 'Legendary', chance: 4 },
+                  { name: 'Nova', species: '⭐', rarity: 'Legendary', chance: 3 },
+                  // Mythical pets
+                  { name: 'Aether', species: '✨', rarity: 'Mythical', chance: 2.5 },
+                  { name: 'Void', species: '🌌', rarity: 'Mythical', chance: 2 },
+                  { name: 'Cosmos', species: '🌠', rarity: 'Mythical', chance: 1.5 },
+                  { name: 'Eternal', species: '💫', rarity: 'Mythical', chance: 1 },
+                  // Secret pets
+                  { name: 'Eclipse', species: '🌑', rarity: 'Secret', chance: 0.5 },
+                  { name: 'Infinity', species: '♾️', rarity: 'Secret', chance: 0.3 },
+                  { name: 'Omega', species: 'Ω', rarity: 'Secret', chance: 0.2 },
+                ].filter(pet => pet.rarity === rarity);
+
+                if (petsInRarity.length === 0) return null;
+
+                const rarityChance = rarityChances.find(rc => rc.rarity === rarity);
+                const totalChance = petsInRarity.reduce((sum, pet) => sum + pet.chance, 0);
+
+                return (
+                  <div key={rarity} className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${rarityStyles[rarity] || ''}`}>
+                        {rarity}
+                      </span>
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                        {rarityChance ? `${rarityChance.chance}%` : `${totalChance.toFixed(1)}%`} chance
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {petsInRarity.map((pet) => (
+                        <div
+                          key={pet.name}
+                          className="p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex items-center gap-3"
+                        >
+                          <span className="text-3xl">{pet.species}</span>
+                          <div className="flex-1">
+                            <p className="font-semibold text-gray-900 dark:text-white text-sm">{pet.name}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {pet.chance}% drop rate
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="sticky bottom-0 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-end gap-3 rounded-b-xl">
+              <button
+                onClick={() => setShowPetInfo(false)}
+                className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
+                style={{
+                  backgroundColor: 'var(--theme-icon-color, rgb(14, 165, 233))',
+                  color: 'white',
+                }}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

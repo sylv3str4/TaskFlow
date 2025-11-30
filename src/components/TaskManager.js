@@ -965,7 +965,8 @@ const TaskManager = () => {
           onClick={handleCloseModal}
         >
           <div 
-            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full p-6 animate-scale-in transform max-h-[90vh] overflow-y-auto"
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full p-6 animate-scale-in transform max-h-[90vh] overflow-y-auto border-2"
+            style={{ borderColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.3)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center mb-4">
@@ -983,7 +984,7 @@ const TaskManager = () => {
               {/* Basic Information */}
               <div className="space-y-4">
                 <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                  <span className="w-1 h-4 bg-gradient-to-b from-primary-500 to-primary-600 rounded-full"></span>
+                  <span className="w-1 h-4 rounded-full" style={{ background: `linear-gradient(to bottom, var(--theme-color-from, rgb(14, 165, 233)), var(--theme-color-to, rgb(3, 105, 161)))` }}></span>
                   Basic Information
                 </h4>
                 <div>
@@ -1026,9 +1027,14 @@ const TaskManager = () => {
                     onClick={() => setFormData({ ...formData, taskType: 'deadline' })}
                     className={`p-3 rounded-xl border-2 transition-all duration-200 ${
                       formData.taskType === 'deadline'
-                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
+                        ? 'bg-opacity-10 dark:bg-opacity-20'
                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
                     }`}
+                    style={formData.taskType === 'deadline' ? {
+                      borderColor: 'var(--theme-icon-color, rgb(14, 165, 233))',
+                      backgroundColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.1)',
+                      color: 'var(--theme-icon-color, rgb(14, 165, 233))',
+                    } : {}}
                   >
                     <div className="font-medium text-sm mb-1">Deadline</div>
                     <div className="text-xs opacity-75">Point in time</div>
@@ -1038,9 +1044,14 @@ const TaskManager = () => {
                     onClick={() => setFormData({ ...formData, taskType: 'duration' })}
                     className={`p-3 rounded-xl border-2 transition-all duration-200 ${
                       formData.taskType === 'duration'
-                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
+                        ? 'bg-opacity-10 dark:bg-opacity-20'
                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
                     }`}
+                    style={formData.taskType === 'duration' ? {
+                      borderColor: 'var(--theme-icon-color, rgb(14, 165, 233))',
+                      backgroundColor: 'rgba(var(--theme-icon-color-rgb, 14, 165, 233), 0.1)',
+                      color: 'var(--theme-icon-color, rgb(14, 165, 233))',
+                    } : {}}
                   >
                     <div className="font-medium text-sm mb-1">Duration</div>
                     <div className="text-xs opacity-75">Time block</div>

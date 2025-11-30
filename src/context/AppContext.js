@@ -18,6 +18,7 @@ import {
   getQuests,
   saveQuests,
 } from '../utils/storage';
+import { FOOD_ITEMS } from '../components/Shop';
 
 const AppContext = createContext();
 
@@ -45,6 +46,7 @@ const ActionTypes = {
   ADD_PET_TO_INVENTORY: 'ADD_PET_TO_INVENTORY',
   EQUIP_PET: 'EQUIP_PET',
   UNEQUIP_PET: 'UNEQUIP_PET',
+  DELETE_PET: 'DELETE_PET',
   UPDATE_INVENTORY: 'UPDATE_INVENTORY',
   UPDATE_PITY: 'UPDATE_PITY',
 
@@ -116,7 +118,8 @@ const getLevelStats = (xp) => {
   };
 };
 
-const PET_SPIN_COST = 25;
+const PET_SPIN_COST = 150;
+const MAX_PET_LEVEL = 20;
 const PITY_THRESHOLD = 10; // Guarantee rare+ after 10 spins
 
 // GMT+7 timezone helpers - work entirely in UTC
@@ -836,17 +839,62 @@ const generateAchievementQuests = () => [
 ];
 
 // Buff/Debuff system
-const BUFF_TYPES = ['xpBoost', 'coinBoost', 'discount', 'luckBoost'];
+const BUFF_TYPES = ['xpBoost', 'coinBoost'];
 const DEBUFF_TYPES = ['xpPenalty', 'coinPenalty', 'priceIncrease', 'luckPenalty'];
+
+// Mood system
+const MOOD_TYPES = {
+  // Positive moods (bonus pet exp)
+  HAPPY: { name: 'Happy', expMultiplier: 1.25, duration: 30 }, // 25% bonus
+  EXCITED: { name: 'Excited', expMultiplier: 1.5, duration: 20 }, // 50% bonus
+  ECSTATIC: { name: 'Ecstatic', expMultiplier: 2.0, duration: 15 }, // 100% bonus (max mood)
+  // Neutral mood (no effect)
+  CONTENT: { name: 'Content', expMultiplier: 1.0, duration: 60 }, // No bonus/penalty
+  // Negative moods (penalty pet exp)
+  SAD: { name: 'Sad', expMultiplier: 0.75, duration: 45 }, // 25% penalty
+  ANGRY: { name: 'Angry', expMultiplier: 0.5, duration: 30 }, // 50% penalty
+  DEPRESSED: { name: 'Depressed', expMultiplier: 0.25, duration: 60 }, // 75% penalty
+};
+
+// Pet favorite foods mapping (each pet species has a unique favorite)
+const PET_FAVORITE_FOODS = {
+  '🐾': 'pixel_favorite', // Pixel
+  '🐢': 'pebble_favorite', // Pebble
+  '🐱': 'whiskers_favorite', // Whiskers
+  '🐠': 'bubbles_favorite', // Bubbles
+  '🐰': 'fluffy_favorite', // Fluffy
+  '🐦': 'chirpy_favorite', // Chirpy
+  '🦊': 'blossom_favorite', // Blossom
+  '🕊️': 'starling_favorite', // Starling
+  '🐺': 'shadow_favorite', // Shadow
+  '🦀': 'coral_favorite', // Coral
+  '🐧': 'frost_favorite', // Frost
+  '🦄': 'nimbus_favorite', // Nimbus
+  '🐲': 'ember_favorite', // Ember
+  '🦋': 'aurora_favorite', // Aurora
+  '⚡': 'thunder_favorite', // Thunder
+  '💎': 'crystal_favorite', // Crystal
+  '🐉': 'lumen_favorite', // Lumen
+  '🔥': 'phoenix_favorite', // Phoenix
+  '🦁': 'titan_favorite', // Titan
+  '⭐': 'nova_favorite', // Nova
+  '✨': 'aether_favorite', // Aether
+  '🌌': 'void_favorite', // Void
+  '🌠': 'cosmos_favorite', // Cosmos
+  '💫': 'eternal_favorite', // Eternal
+  '🌑': 'eclipse_favorite', // Eclipse
+  '♾️': 'infinity_favorite', // Infinity
+  'Ω': 'omega_favorite', // Omega
+};
 
 const getRarityConfig = (rarity) => {
   const configs = {
-    Common: { buffCount: [1, 2], debuffCount: [1, 2], buffRange: [5, 15], debuffRange: [5, 15] },
-    Rare: { buffCount: [2, 3], debuffCount: [0, 1], buffRange: [10, 25], debuffRange: [5, 10] },
-    Epic: { buffCount: [3, 4], debuffCount: [0, 1], buffRange: [15, 35], debuffRange: [0, 5] },
-    Legendary: { buffCount: [4, 4], debuffCount: [0, 0], buffRange: [25, 50], debuffRange: [0, 0] },
-    Mythical: { buffCount: [5, 5], debuffCount: [0, 0], buffRange: [40, 75], debuffRange: [0, 0] },
-    Secret: { buffCount: [6, 6], debuffCount: [0, 0], buffRange: [60, 100], debuffRange: [0, 0] },
+    Common: { buffCount: [1, 1], debuffCount: [1, 2], buffRange: [1, 4], debuffRange: [1, 4] },
+    Rare: { buffCount: [1, 2], debuffCount: [0, 1], buffRange: [2, 6], debuffRange: [1, 3] },
+    Epic: { buffCount: [2, 3], debuffCount: [0, 1], buffRange: [4, 10], debuffRange: [0, 2] },
+    Legendary: { buffCount: [3, 3], debuffCount: [0, 0], buffRange: [6, 15], debuffRange: [0, 0] },
+    Mythical: { buffCount: [4, 4], debuffCount: [0, 0], buffRange: [10, 20], debuffRange: [0, 0] },
+    Secret: { buffCount: [5, 5], debuffCount: [0, 0], buffRange: [15, 25], debuffRange: [0, 0] },
   };
   return configs[rarity] || configs.Common;
 };
@@ -862,7 +910,7 @@ const generatePetBuffs = (rarity) => {
   
   for (let i = 0; i < buffCount && availableBuffs.length > 0; i++) {
     const buffType = availableBuffs.splice(Math.floor(Math.random() * availableBuffs.length), 1)[0];
-    const value = Math.floor(Math.random() * (config.buffRange[1] - config.buffRange[0] + 1)) + config.buffRange[0];
+    let value = Math.floor(Math.random() * (config.buffRange[1] - config.buffRange[0] + 1)) + config.buffRange[0];
     buffs[buffType] = value;
   }
   
@@ -880,16 +928,44 @@ const generatePetBuffs = (rarity) => {
 };
 
 const PET_POOL = [
-  { name: 'Pixel', species: '🐾', rarity: 'Common', color: '#0ea5e9', chance: 30 },
-  { name: 'Blossom', species: '🦊', rarity: 'Rare', color: '#f97316', chance: 20 },
-  { name: 'Lumen', species: '🐉', rarity: 'Legendary', color: '#fde047', chance: 5 },
-  { name: 'Nimbus', species: '🦄', rarity: 'Epic', color: '#a855f7', chance: 10 },
-  { name: 'Pebble', species: '🐢', rarity: 'Common', color: '#10b981', chance: 15 },
-  { name: 'Starling', species: '🕊️', rarity: 'Rare', color: '#38bdf8', chance: 12 },
-  { name: 'Ember', species: '🐲', rarity: 'Epic', color: '#ef4444', chance: 8 },
-  { name: 'Aether', species: '✨', rarity: 'Mythical', color: '#ec4899', chance: 2 },
-  { name: 'Void', species: '🌌', rarity: 'Mythical', color: '#8b5cf6', chance: 1.5 },
+  // Common pets
+  { name: 'Pixel', species: '🐾', rarity: 'Common', color: '#0ea5e9', chance: 25 },
+  { name: 'Pebble', species: '🐢', rarity: 'Common', color: '#10b981', chance: 20 },
+  { name: 'Whiskers', species: '🐱', rarity: 'Common', color: '#f59e0b', chance: 15 },
+  { name: 'Bubbles', species: '🐠', rarity: 'Common', color: '#06b6d4', chance: 12 },
+  { name: 'Fluffy', species: '🐰', rarity: 'Common', color: '#ec4899', chance: 10 },
+  { name: 'Chirpy', species: '🐦', rarity: 'Common', color: '#84cc16', chance: 8 },
+  
+  // Rare pets
+  { name: 'Blossom', species: '🦊', rarity: 'Rare', color: '#f97316', chance: 18 },
+  { name: 'Starling', species: '🕊️', rarity: 'Rare', color: '#38bdf8', chance: 15 },
+  { name: 'Shadow', species: '🐺', rarity: 'Rare', color: '#6366f1', chance: 12 },
+  { name: 'Coral', species: '🦀', rarity: 'Rare', color: '#f43f5e', chance: 10 },
+  { name: 'Frost', species: '🐧', rarity: 'Rare', color: '#0ea5e9', chance: 8 },
+  
+  // Epic pets
+  { name: 'Nimbus', species: '🦄', rarity: 'Epic', color: '#a855f7', chance: 12 },
+  { name: 'Ember', species: '🐲', rarity: 'Epic', color: '#ef4444', chance: 10 },
+  { name: 'Aurora', species: '🦋', rarity: 'Epic', color: '#ec4899', chance: 8 },
+  { name: 'Thunder', species: '⚡', rarity: 'Epic', color: '#fbbf24', chance: 6 },
+  { name: 'Crystal', species: '💎', rarity: 'Epic', color: '#06b6d4', chance: 5 },
+  
+  // Legendary pets
+  { name: 'Lumen', species: '🐉', rarity: 'Legendary', color: '#fde047', chance: 6 },
+  { name: 'Phoenix', species: '🔥', rarity: 'Legendary', color: '#f97316', chance: 5 },
+  { name: 'Titan', species: '🦁', rarity: 'Legendary', color: '#fbbf24', chance: 4 },
+  { name: 'Nova', species: '⭐', rarity: 'Legendary', color: '#a855f7', chance: 3 },
+  
+  // Mythical pets
+  { name: 'Aether', species: '✨', rarity: 'Mythical', color: '#ec4899', chance: 2.5 },
+  { name: 'Void', species: '🌌', rarity: 'Mythical', color: '#8b5cf6', chance: 2 },
+  { name: 'Cosmos', species: '🌠', rarity: 'Mythical', color: '#06b6d4', chance: 1.5 },
+  { name: 'Eternal', species: '💫', rarity: 'Mythical', color: '#fde047', chance: 1 },
+  
+  // Secret pets
   { name: 'Eclipse', species: '🌑', rarity: 'Secret', color: '#000000', chance: 0.5 },
+  { name: 'Infinity', species: '♾️', rarity: 'Secret', color: '#6366f1', chance: 0.3 },
+  { name: 'Omega', species: 'Ω', rarity: 'Secret', color: '#ec4899', chance: 0.2 },
 ];
 
 // Pet level system helpers
@@ -900,8 +976,8 @@ const getExpForLevel = (level) => {
 
 const scaleBuffsForLevel = (buffs, level) => {
   if (!buffs || level <= 1) return buffs || {};
-  // Buffs increase by 2% per level (capped at +100% = 2x at level 50)
-  const multiplier = Math.min(1 + (level - 1) * 0.02, 2);
+  // Buffs increase by 1% per level (capped at +19% = 1.19x at level 20)
+  const multiplier = Math.min(1 + (level - 1) * 0.01, 1.19);
   const scaled = {};
   for (const [key, value] of Object.entries(buffs)) {
     scaled[key] = Math.floor(value * multiplier);
@@ -911,8 +987,8 @@ const scaleBuffsForLevel = (buffs, level) => {
 
 const scaleDebuffsForLevel = (debuffs, level) => {
   if (!debuffs || level <= 1) return debuffs || {};
-  // Debuffs decrease by 1% per level (capped at -50% = 0.5x at level 50)
-  const multiplier = Math.max(1 - (level - 1) * 0.01, 0.5);
+  // Debuffs decrease by 0.5% per level (capped at -9.5% = 0.905x at level 20)
+  const multiplier = Math.max(1 - (level - 1) * 0.005, 0.905);
   const scaled = {};
   for (const [key, value] of Object.entries(debuffs)) {
     scaled[key] = Math.floor(value * multiplier);
@@ -954,9 +1030,11 @@ const rollPetReward = (pityCounter = 0) => {
     level: 1,
     exp: 0,
     expForNextLevel: getExpForLevel(2),
-    mood: 'Happy',
-    energy: 70,
-    hunger: 30,
+        mood: 'Content',
+        moodExpiresAt: null,
+        activeBuffs: {},
+        energy: 70,
+        hunger: 30,
   };
 };
 
@@ -1113,7 +1191,7 @@ const appReducer = (state, action) => {
               hunger: Math.min(100, Math.max(0, petChanges.hunger ?? pet.hunger ?? 30)),
               level: newLevel,
               exp: petChanges.exp ?? pet.exp ?? 0,
-              expForNextLevel: petChanges.expForNextLevel ?? pet.expForNextLevel ?? getExpForLevel(newLevel + 1),
+              expForNextLevel: newLevel >= MAX_PET_LEVEL ? 0 : (petChanges.expForNextLevel ?? pet.expForNextLevel ?? getExpForLevel(newLevel + 1)),
             };
             
             // Apply level-based scaling to buffs/debuffs
@@ -1192,6 +1270,23 @@ const appReducer = (state, action) => {
       const updatedEquippedPets = equippedPets.filter(id => id !== petId);
       const updatedGamification = {
         ...state.gamification,
+        equippedPets: updatedEquippedPets,
+      };
+      saveGamification(updatedGamification, userId);
+      return { ...state, gamification: updatedGamification };
+    }
+
+    case ActionTypes.DELETE_PET: {
+      const petIds = Array.isArray(action.payload) ? action.payload : [action.payload];
+      const equippedPets = state.gamification.equippedPets || [];
+      const petInventory = state.gamification.petInventory || [];
+      
+      const updatedEquippedPets = equippedPets.filter(id => !petIds.includes(id));
+      const updatedPetInventory = petInventory.filter(pet => !petIds.includes(pet.id));
+      
+      const updatedGamification = {
+        ...state.gamification,
+        petInventory: updatedPetInventory,
         equippedPets: updatedEquippedPets,
       };
       saveGamification(updatedGamification, userId);
@@ -1379,7 +1474,9 @@ export const AppProvider = ({ children }) => {
         species: '🐾',
         rarity: 'Common',
         color: '#0ea5e9',
-        mood: 'Happy',
+        mood: 'Content',
+        moodExpiresAt: null,
+        activeBuffs: {},
         energy: 70,
         hunger: 30,
         level: 1,
@@ -1395,8 +1492,9 @@ export const AppProvider = ({ children }) => {
       gamification.equippedPets = [];
     }
     
-    // Ensure all pets in inventory have required fields
+    // Ensure all pets in inventory have required fields and clean expired moods/buffs
     if (gamification.petInventory) {
+      const now = Date.now();
       gamification.petInventory = gamification.petInventory.map(pet => {
         if (!pet.id) {
           pet.id = `pet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -1412,6 +1510,23 @@ export const AppProvider = ({ children }) => {
         // Scale buffs/debuffs to current level
         pet.buffs = scaleBuffsForLevel(pet.buffs, pet.level);
         pet.debuffs = scaleDebuffsForLevel(pet.debuffs, pet.level);
+        
+        // Initialize mood fields if missing
+        if (!pet.mood) pet.mood = 'Content';
+        if (!pet.moodExpiresAt) pet.moodExpiresAt = null;
+        if (!pet.activeBuffs) pet.activeBuffs = {};
+        
+        // Clean expired moods
+        if (pet.moodExpiresAt && now > pet.moodExpiresAt) {
+          pet.mood = 'Content';
+          pet.moodExpiresAt = null;
+        }
+        
+        // Clean expired buffs
+        if (pet.activeBuffs.buffExpiresAt && now > pet.activeBuffs.buffExpiresAt) {
+          pet.activeBuffs = {};
+        }
+        
         return pet;
       });
       saveGamification(gamification, userId);
@@ -1653,14 +1768,10 @@ export const AppProvider = ({ children }) => {
         return { success: false, message: 'You don\'t have any food in your inventory! Buy food from the shop first.' };
       }
       
-      const FOOD_ITEMS = {
-        basic: { hungerReduction: 25, energyBoost: 12, mood: 'Content' },
-        premium: { hungerReduction: 50, energyBoost: 25, mood: 'Happy' },
-        treat: { hungerReduction: 15, energyBoost: 20, mood: 'Excited' },
-        super: { hungerReduction: 40, energyBoost: 35, mood: 'Ecstatic' },
-      };
-      
-      const food = FOOD_ITEMS[foodId] || FOOD_ITEMS.basic;
+      const food = FOOD_ITEMS.find(f => f.id === foodId);
+      if (!food) {
+        return { success: false, message: 'Food item not found.' };
+      }
       
       // Use up to requestedQuantity food items, but not more than available
       const actualQuantity = Math.min(requestedQuantity, foodQuantity);
@@ -1680,8 +1791,51 @@ export const AppProvider = ({ children }) => {
       // Calculate new pet stats
       const currentHunger = pet.hunger || 30;
       const currentEnergy = pet.energy || 70;
-      const newHunger = Math.max(0, currentHunger - food.hungerReduction * actualQuantity);
-      const newEnergy = Math.min(100, currentEnergy + food.energyBoost * actualQuantity);
+      let newHunger = Math.max(0, currentHunger - food.hungerReduction * actualQuantity);
+      let newEnergy = Math.min(100, currentEnergy + food.energyBoost * actualQuantity);
+      
+      // Handle mood system
+      let newMood = pet.mood || 'Content';
+      let moodExpiresAt = pet.moodExpiresAt || null;
+      let activeBuffs = pet.activeBuffs || {};
+      
+      // Handle milk (cleanses mood)
+      if (food.cleansesMood) {
+        newMood = 'Content';
+        moodExpiresAt = null;
+        activeBuffs = {}; // Clear all active buffs
+      } else if (food.mood) {
+        // Apply mood with duration
+        newMood = food.mood;
+        const moodDuration = food.moodDuration || 60; // minutes
+        moodExpiresAt = Date.now() + (moodDuration * 60 * 1000);
+      }
+      
+      // Handle favorite food (insane buffs)
+      if (food.isFavorite && food.petSpecies === pet.species) {
+        newMood = 'Ecstatic'; // Max mood
+        moodExpiresAt = Date.now() + (30 * 60 * 1000); // 30 minutes
+        
+        // Apply special buffs
+        if (food.specialBuffs) {
+          const buffDuration = food.specialBuffs.duration || 10; // minutes
+          activeBuffs = {
+            ...activeBuffs,
+            expBoost: food.specialBuffs.expBoost || 0,
+            infiniteEnergy: food.specialBuffs.infiniteEnergy || false,
+            infiniteHunger: food.specialBuffs.infiniteHunger || false,
+            buffExpiresAt: Date.now() + (buffDuration * 60 * 1000),
+          };
+          
+          // Apply infinite energy/hunger immediately
+          if (food.specialBuffs.infiniteEnergy) {
+            newEnergy = 100;
+          }
+          if (food.specialBuffs.infiniteHunger) {
+            newHunger = 0;
+          }
+        }
+      }
       
       // Update pet inventory with new stats
       const updatedPetInventory = (state.gamification.petInventory || []).map(p => {
@@ -1690,7 +1844,9 @@ export const AppProvider = ({ children }) => {
             ...p,
             hunger: newHunger,
             energy: newEnergy,
-            mood: food.mood,
+            mood: newMood,
+            moodExpiresAt,
+            activeBuffs,
           };
         }
         return p;
@@ -1706,26 +1862,30 @@ export const AppProvider = ({ children }) => {
       saveGamification(updatedGamification, userId);
       dispatch({ type: ActionTypes.SET_GAMIFICATION, payload: updatedGamification, userId });
       
-      const itemLabel = actualQuantity === 1 ? 'a treat' : `${actualQuantity} treats`;
-      return { success: true, message: `${pet.name} enjoyed ${itemLabel}!` };
+      let message = `${pet.name} enjoyed ${actualQuantity === 1 ? 'a treat' : `${actualQuantity} treats`}!`;
+      if (food.isFavorite && food.petSpecies === pet.species) {
+        message = `${pet.name} is absolutely ecstatic! Their favorite food grants insane buffs!`;
+      } else if (food.cleansesMood) {
+        message = `${pet.name} feels refreshed! Mood cleansed.`;
+      }
+      
+      return { success: true, message };
     },
 
     buyFood: (foodItem) => {
-      // Apply discount buff from all equipped pets
+      // Apply price increase debuff from all equipped pets
       const equippedPets = (state.gamification.equippedPets || [])
         .map(petId => state.gamification.petInventory?.find(p => p.id === petId))
         .filter(Boolean);
       
-      let totalDiscount = 0;
       let totalPriceIncrease = 0;
       equippedPets.forEach(pet => {
-        const scaledBuffs = scaleBuffsForLevel(pet.buffs || {}, pet.level || 1);
         const scaledDebuffs = scaleDebuffsForLevel(pet.debuffs || {}, pet.level || 1);
-        totalDiscount += scaledBuffs.discount || 0;
         totalPriceIncrease += scaledDebuffs.priceIncrease || 0;
       });
       
-      const finalCost = Math.max(1, Math.floor(foodItem.cost * (1 - totalDiscount / 100) * (1 + totalPriceIncrease / 100)));
+      const priceIncreaseMultiplier = 1 + (totalPriceIncrease / 100);
+      const finalCost = Math.max(1, Math.floor(foodItem.cost * priceIncreaseMultiplier));
       
       if (state.gamification.coins < finalCost) {
         return { success: false, message: `Not enough coins! You need ${finalCost} coins.` };
@@ -1759,10 +1919,36 @@ export const AppProvider = ({ children }) => {
         return { success: false, message: 'Pet not found in inventory.' };
       }
       
-      const currentEnergy = currentPet.energy || 0;
+      // Check mood expiration
+      const now = Date.now();
+      let currentMood = currentPet.mood || 'Content';
+      let moodExpiresAt = currentPet.moodExpiresAt;
+      let activeBuffs = currentPet.activeBuffs || {};
+      
+      // Check if mood has expired
+      if (moodExpiresAt && now > moodExpiresAt) {
+        currentMood = 'Content';
+        moodExpiresAt = null;
+      }
+      
+      // Check if buffs have expired
+      if (activeBuffs.buffExpiresAt && now > activeBuffs.buffExpiresAt) {
+        activeBuffs = {};
+      }
+      
+      // Apply infinite energy/hunger from active buffs
+      let currentEnergy = currentPet.energy || 0;
+      let currentHunger = currentPet.hunger || 0;
+      
+      if (activeBuffs.infiniteEnergy) {
+        currentEnergy = 100;
+      }
+      if (activeBuffs.infiniteHunger) {
+        currentHunger = 0;
+      }
       
       // Check if pet has energy to play
-      if (currentEnergy <= 0) {
+      if (currentEnergy <= 0 && !activeBuffs.infiniteEnergy) {
         return { 
           success: false, 
           message: `${currentPet.name} is too tired to play! Feed them or wait for energy to recover.` 
@@ -1771,14 +1957,22 @@ export const AppProvider = ({ children }) => {
       
       const currentLevel = currentPet.level || 1;
       const currentExp = currentPet.exp || 0;
-      const currentHunger = currentPet.hunger || 0;
       
       // Grant exp for playing (base 10 exp, scales with level)
       let expGain = 10 + Math.floor(currentLevel * 0.5);
       
-      // Apply exp penalty if pet is hungry (>50%) or has low energy (<50%)
-      const isHungry = currentHunger > 50;
-      const hasLowEnergy = currentEnergy < 50;
+      // Apply mood-based exp multiplier
+      const moodConfig = Object.values(MOOD_TYPES).find(m => m.name === currentMood) || MOOD_TYPES.CONTENT;
+      expGain = Math.floor(expGain * moodConfig.expMultiplier);
+      
+      // Apply active buff exp boost (from favorite food)
+      if (activeBuffs.expBoost) {
+        expGain = Math.floor(expGain * (1 + activeBuffs.expBoost / 100));
+      }
+      
+      // Apply exp penalty if pet is hungry (>50%) or has low energy (<50%) (unless buffed)
+      const isHungry = currentHunger > 50 && !activeBuffs.infiniteHunger;
+      const hasLowEnergy = currentEnergy < 50 && !activeBuffs.infiniteEnergy;
       
       if (isHungry || hasLowEnergy) {
         // Reduce exp gain by 50% if either condition is met
@@ -1789,20 +1983,38 @@ export const AppProvider = ({ children }) => {
       let newLevel = currentLevel;
       let leveledUp = false;
       
-      // Check for level up
-      while (newExp >= (currentPet.expForNextLevel || getExpForLevel(newLevel + 1))) {
+      // Check for level up (max level is 20)
+      while (newLevel < MAX_PET_LEVEL && newExp >= (currentPet.expForNextLevel || getExpForLevel(newLevel + 1))) {
         newExp -= (currentPet.expForNextLevel || getExpForLevel(newLevel + 1));
         newLevel += 1;
         leveledUp = true;
       }
       
+      // Cap level at max
+      if (newLevel > MAX_PET_LEVEL) {
+        newLevel = MAX_PET_LEVEL;
+        newExp = 0; // Reset exp when at max level
+      }
+      
+      // Apply infinite energy/hunger from buffs
+      let updatedEnergy = Math.max(0, currentEnergy - 10); // Playing costs 10 energy
+      if (activeBuffs.infiniteEnergy) {
+        updatedEnergy = 100;
+      }
+      let updatedHunger = Math.min(100, currentHunger + 5);
+      if (activeBuffs.infiniteHunger) {
+        updatedHunger = 0;
+      }
+      
       const petChanges = {
-        mood: 'Playful',
-        energy: Math.max(0, currentPet.energy - 5),
-        hunger: Math.min(100, currentPet.hunger + 5),
+        mood: currentMood, // Keep current mood (don't override with 'Playful')
+        energy: updatedEnergy,
+        hunger: updatedHunger,
         exp: newExp,
         level: newLevel,
-        expForNextLevel: getExpForLevel(newLevel + 1),
+        expForNextLevel: newLevel >= MAX_PET_LEVEL ? 0 : getExpForLevel(newLevel + 1),
+        moodExpiresAt,
+        activeBuffs,
       };
       
       // If leveled up, we need to rescale buffs/debuffs from their current level to new level
@@ -1811,7 +2023,7 @@ export const AppProvider = ({ children }) => {
         // Unscale from current level to get base values (approximate)
         const unscaleBuffs = (buffs, level) => {
           if (!buffs || level <= 1) return buffs || {};
-          const multiplier = Math.min(1 + (level - 1) * 0.02, 2);
+          const multiplier = Math.min(1 + (level - 1) * 0.01, 1.19);
           const unscaled = {};
           for (const [key, value] of Object.entries(buffs)) {
             unscaled[key] = Math.floor(value / multiplier);
@@ -1820,7 +2032,7 @@ export const AppProvider = ({ children }) => {
         };
         const unscaleDebuffs = (debuffs, level) => {
           if (!debuffs || level <= 1) return debuffs || {};
-          const multiplier = Math.max(1 - (level - 1) * 0.01, 0.5);
+          const multiplier = Math.max(1 - (level - 1) * 0.005, 0.905);
           const unscaled = {};
           for (const [key, value] of Object.entries(debuffs)) {
             unscaled[key] = Math.floor(value / multiplier);
@@ -1879,21 +2091,8 @@ export const AppProvider = ({ children }) => {
     },
 
     spinForPet: () => {
-      // Combine luck from all equipped pets
-      const equippedPets = (state.gamification.equippedPets || [])
-        .map(petId => state.gamification.petInventory?.find(p => p.id === petId))
-        .filter(Boolean);
-      
-      let totalLuckBoost = 0;
-      let totalLuckPenalty = 0;
-      equippedPets.forEach(pet => {
-        const scaledBuffs = scaleBuffsForLevel(pet.buffs || {}, pet.level || 1);
-        const scaledDebuffs = scaleDebuffsForLevel(pet.debuffs || {}, pet.level || 1);
-        totalLuckBoost += scaledBuffs.luckBoost || 0;
-        totalLuckPenalty += scaledDebuffs.luckPenalty || 0;
-      });
-      
-      const finalCost = Math.max(1, Math.floor(PET_SPIN_COST * (1 - totalLuckBoost / 100) * (1 + totalLuckPenalty / 100)));
+      // Spin cost is always the base cost
+      const finalCost = PET_SPIN_COST;
       
       if (state.gamification.coins < finalCost) {
         return { success: false, message: `You need ${finalCost} coins to spin.` };
@@ -1951,39 +2150,34 @@ export const AppProvider = ({ children }) => {
       });
     },
     
+    deletePet: (petIds) => {
+      dispatch({
+        type: ActionTypes.DELETE_PET,
+        payload: petIds,
+        userId,
+      });
+    },
+    
     // Helper function to get pet's effective food cost (from all equipped pets)
     getFoodCost: (baseCost) => {
       const equippedPets = (state.gamification.equippedPets || [])
         .map(petId => state.gamification.petInventory?.find(p => p.id === petId))
         .filter(Boolean);
       
-      let totalDiscount = 0;
       let totalPriceIncrease = 0;
       equippedPets.forEach(pet => {
-        const scaledBuffs = scaleBuffsForLevel(pet.buffs || {}, pet.level || 1);
         const scaledDebuffs = scaleDebuffsForLevel(pet.debuffs || {}, pet.level || 1);
-        totalDiscount += scaledBuffs.discount || 0;
         totalPriceIncrease += scaledDebuffs.priceIncrease || 0;
       });
       
-      return Math.max(1, Math.floor(baseCost * (1 - totalDiscount / 100) * (1 + totalPriceIncrease / 100)));
+      const priceIncreaseMultiplier = 1 + (totalPriceIncrease / 100);
+      return Math.max(1, Math.floor(baseCost * priceIncreaseMultiplier));
     },
     
     // Helper function to get pet's effective spin cost
     getSpinCost: () => {
-      const equippedPets = (state.gamification.equippedPets || [])
-        .map(petId => state.gamification.petInventory?.find(p => p.id === petId))
-        .filter(Boolean);
-      
-      let totalLuckBoost = 0;
-      let totalLuckPenalty = 0;
-      equippedPets.forEach(pet => {
-        const scaledBuffs = scaleBuffsForLevel(pet.buffs || {}, pet.level || 1);
-        const scaledDebuffs = scaleDebuffsForLevel(pet.debuffs || {}, pet.level || 1);
-        totalLuckBoost += scaledBuffs.luckBoost || 0;
-        totalLuckPenalty += scaledDebuffs.luckPenalty || 0;
-      });
-      return Math.max(1, Math.floor(PET_SPIN_COST * (1 - totalLuckBoost / 100) * (1 + totalLuckPenalty / 100)));
+      // Spin cost is always the base cost
+      return PET_SPIN_COST;
     },
 
     // Title management
