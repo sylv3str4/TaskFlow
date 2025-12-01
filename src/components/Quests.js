@@ -1,6 +1,6 @@
 /**
  * Quests Component
- * Displays daily, weekly, and achievement quests with progress tracking
+ * Displays daily and weekly quests with progress tracking
  */
 
 import React, { useEffect, useState } from 'react';
@@ -13,15 +13,12 @@ import {
   Clock,
   Star,
   Coins,
-  TrendingUp,
   Calendar,
-  Award,
-  Zap,
 } from 'lucide-react';
 import { format, isSameDay, parseISO, startOfWeek, endOfWeek } from 'date-fns';
 
 const Quests = () => {
-  const { quests, gamification, tasks, studyLogs, checkQuestProgress } = useApp();
+  const { quests, tasks, studyLogs, checkQuestProgress } = useApp();
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('daily');
   const [dailyResetCountdown, setDailyResetCountdown] = useState('');
@@ -201,69 +198,6 @@ const Quests = () => {
       }
     }
 
-    // Check achievement quests
-    if (gamification?.level) {
-      const levelQuest = quests.achievements?.find(q => q.id === 'achieve_level_5' && !q.completed);
-      if (levelQuest) {
-        checkQuestProgress('level', gamification.level);
-      }
-    }
-
-    const totalCompleted = tasks.filter(t => t.completed).length;
-    const totalTaskQuest = quests.achievements?.find(q => q.id === 'achieve_complete_100_tasks' && !q.completed);
-    if (totalTaskQuest && totalCompleted > 0) {
-      const currentProgress = quests.progress?.[totalTaskQuest.id] || 0;
-      if (totalCompleted > currentProgress) {
-        checkQuestProgress('tasks', totalCompleted - currentProgress);
-      }
-    }
-
-    const totalStudyMinutes = studyLogs.reduce((sum, log) => sum + (log.duration || 0), 0);
-    const totalStudyQuest = quests.achievements?.find(q => q.id === 'achieve_study_50_hours' && !q.completed);
-    if (totalStudyQuest && totalStudyMinutes > 0) {
-      const currentProgress = quests.progress?.[totalStudyQuest.id] || 0;
-      if (totalStudyMinutes > currentProgress) {
-        checkQuestProgress('study', totalStudyMinutes - currentProgress);
-      }
-    }
-
-    const totalPomodoros = studyLogs.filter(log => log.type === 'pomodoro').length;
-    const totalPomodoroQuest = quests.achievements?.find(q => q.id === 'achieve_complete_100_pomodoros' && !q.completed);
-    if (totalPomodoroQuest && totalPomodoros > 0) {
-      const currentProgress = quests.progress?.[totalPomodoroQuest.id] || 0;
-      if (totalPomodoros > currentProgress) {
-        checkQuestProgress('pomodoro', totalPomodoros - currentProgress);
-      }
-    }
-
-    if (gamification?.pet?.rarity === 'Legendary' || gamification?.pet?.rarity === 'Mythical' || gamification?.pet?.rarity === 'Secret') {
-      const legendaryQuest = quests.achievements?.find(q => q.id === 'achieve_get_legendary_pet' && !q.completed);
-      if (legendaryQuest) {
-        const currentProgress = quests.progress?.[legendaryQuest.id] || 0;
-        if (currentProgress < 1) {
-          checkQuestProgress('pet', 1);
-        }
-      }
-    }
-    if (gamification?.pet?.rarity === 'Mythical' || gamification?.pet?.rarity === 'Secret') {
-      const mythicalQuest = quests.achievements?.find(q => q.id === 'achieve_get_mythical_pet' && !q.completed);
-      if (mythicalQuest) {
-        const currentProgress = quests.progress?.[mythicalQuest.id] || 0;
-        if (currentProgress < 1) {
-          checkQuestProgress('pet', 1);
-        }
-      }
-    }
-    if (gamification?.pet?.rarity === 'Secret') {
-      const secretQuest = quests.achievements?.find(q => q.id === 'achieve_get_secret_pet' && !q.completed);
-      if (secretQuest) {
-        const currentProgress = quests.progress?.[secretQuest.id] || 0;
-        if (currentProgress < 1) {
-          checkQuestProgress('pet', 1);
-        }
-      }
-    }
-
     // Check guaranteed daily quest (complete all daily quests)
     const dailyCompleteQuest = quests.daily?.quests?.find(q => q.id === 'daily_complete_daily_quests' && !q.completed);
     if (dailyCompleteQuest) {
@@ -272,7 +206,7 @@ const Quests = () => {
       if (allOtherCompleted) {
         const currentProgress = quests.progress?.[dailyCompleteQuest.id] || 0;
         if (currentProgress < 1) {
-          checkQuestProgress('achievement', 1);
+          checkQuestProgress('meta', 1);
         }
       }
     }
@@ -285,11 +219,11 @@ const Quests = () => {
       if (allOtherCompleted) {
         const currentProgress = quests.progress?.[weeklyCompleteQuest.id] || 0;
         if (currentProgress < 1) {
-          checkQuestProgress('achievement', 1);
+          checkQuestProgress('meta', 1);
         }
       }
     }
-  }, [tasks, studyLogs, gamification?.level, gamification?.pet?.rarity, quests, checkQuestProgress]);
+  }, [tasks, studyLogs, quests, checkQuestProgress]);
 
   // Calculate daily progress
   const getDailyProgress = () => {

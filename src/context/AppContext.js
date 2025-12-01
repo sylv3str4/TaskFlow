@@ -86,7 +86,6 @@ const initialState = {
     coins: 0,
     pityCounter: 0, // Tracks spins without rare+ pet
     inventory: {}, // Food inventory: { foodId: quantity }
-    equippedTitle: null, // Currently equipped title
     petInventory: [], // Array of all pets you've rolled: [{ id, name, species, rarity, color, mood, energy, hunger, buffs, debuffs, level, exp, expForNextLevel }]
     equippedPets: [], // Array of up to 3 equipped pet IDs
     lastRewardReason: null,
@@ -100,7 +99,6 @@ const initialState = {
       lastReset: null,
       quests: [],
     },
-    achievements: [],
     progress: {},
   },
   activeTab: 'tasks',
@@ -446,7 +444,7 @@ const WEEKLY_QUEST_POOL = [
     target: 3,
     reward: { xp: 320, coins: 80 },
     icon: '⭐',
-    category: 'achievement',
+    category: 'meta',
   },
 ];
 
@@ -459,7 +457,7 @@ const GUARANTEED_DAILY_QUEST = {
   target: 1,
   reward: { xp: 100, coins: 30 },
   icon: '⭐',
-  category: 'achievement',
+  category: 'meta',
 };
 
 const GUARANTEED_WEEKLY_QUEST = {
@@ -470,7 +468,7 @@ const GUARANTEED_WEEKLY_QUEST = {
   target: 1,
   reward: { xp: 500, coins: 150 },
   icon: '🌟',
-  category: 'achievement',
+  category: 'meta',
 };
 
 // Quest randomizer
@@ -503,340 +501,6 @@ const generateWeeklyQuests = () => {
   return randomQuests;
 };
 
-const generateAchievementQuests = () => [
-  // Level Achievements
-  {
-    id: 'achieve_level_5',
-    title: 'Rising Star',
-    description: 'Reach level 5',
-    type: 'achievement',
-    target: 5,
-    reward: { xp: 500, coins: 100, title: 'Rising Star' },
-    icon: '⭐',
-    category: 'level',
-    requirement: 'Reach level 5',
-  },
-  {
-    id: 'achieve_level_10',
-    title: 'Dedicated Learner',
-    description: 'Reach level 10',
-    type: 'achievement',
-    target: 10,
-    reward: { xp: 2000, coins: 400, title: 'Dedicated Learner' },
-    icon: '🌟',
-    category: 'level',
-    requirement: 'Reach level 10',
-  },
-  {
-    id: 'achieve_level_20',
-    title: 'Expert Scholar',
-    description: 'Reach level 20',
-    type: 'achievement',
-    target: 20,
-    reward: { xp: 5000, coins: 1000, title: 'Expert Scholar' },
-    icon: '💫',
-    category: 'level',
-    requirement: 'Reach level 20',
-  },
-  
-  // Task Achievements
-  {
-    id: 'achieve_complete_50_tasks',
-    title: 'Task Enthusiast',
-    description: 'Complete 50 tasks total',
-    type: 'achievement',
-    target: 50,
-    reward: { xp: 500, coins: 100, title: 'Task Enthusiast' },
-    icon: '✓',
-    category: 'tasks',
-    requirement: 'Complete 50 tasks',
-  },
-  {
-    id: 'achieve_complete_100_tasks',
-    title: 'Task Master',
-    description: 'Complete 100 tasks total',
-    type: 'achievement',
-    target: 100,
-    reward: { xp: 1000, coins: 200, title: 'Task Master' },
-    icon: '✅',
-    category: 'tasks',
-    requirement: 'Complete 100 tasks',
-  },
-  {
-    id: 'achieve_complete_250_tasks',
-    title: 'Productivity Guru',
-    description: 'Complete 250 tasks total',
-    type: 'achievement',
-    target: 250,
-    reward: { xp: 2500, coins: 500, title: 'Productivity Guru' },
-    icon: '🎯',
-    category: 'tasks',
-    requirement: 'Complete 250 tasks',
-  },
-  {
-    id: 'achieve_complete_500_tasks',
-    title: 'Completion Legend',
-    description: 'Complete 500 tasks total',
-    type: 'achievement',
-    target: 500,
-    reward: { xp: 5000, coins: 1000, title: 'Completion Legend' },
-    icon: '🏆',
-    category: 'tasks',
-    requirement: 'Complete 500 tasks',
-  },
-  
-  // Study Time Achievements
-  {
-    id: 'achieve_study_10_hours',
-    title: 'Study Beginner',
-    description: 'Complete 10 hours of study time total',
-    type: 'achievement',
-    target: 600, // minutes
-    reward: { xp: 300, coins: 60, title: 'Study Beginner' },
-    icon: '📚',
-    category: 'study',
-    requirement: 'Study for 10 hours (600 minutes)',
-  },
-  {
-    id: 'achieve_study_25_hours',
-    title: 'Diligent Student',
-    description: 'Complete 25 hours of study time total',
-    type: 'achievement',
-    target: 1500, // minutes
-    reward: { xp: 750, coins: 150, title: 'Diligent Student' },
-    icon: '📖',
-    category: 'study',
-    requirement: 'Study for 25 hours (1500 minutes)',
-  },
-  {
-    id: 'achieve_study_50_hours',
-    title: 'Scholar',
-    description: 'Complete 50 hours of study time total',
-    type: 'achievement',
-    target: 3000, // minutes
-    reward: { xp: 1500, coins: 300, title: 'Scholar' },
-    icon: '⏱️',
-    category: 'study',
-    requirement: 'Study for 50 hours (3000 minutes)',
-  },
-  {
-    id: 'achieve_study_100_hours',
-    title: 'Academic Excellence',
-    description: 'Complete 100 hours of study time total',
-    type: 'achievement',
-    target: 6000, // minutes
-    reward: { xp: 3000, coins: 600, title: 'Academic Excellence' },
-    icon: '🎓',
-    category: 'study',
-    requirement: 'Study for 100 hours (6000 minutes)',
-  },
-  {
-    id: 'achieve_study_200_hours',
-    title: 'Master of Knowledge',
-    description: 'Complete 200 hours of study time total',
-    type: 'achievement',
-    target: 12000, // minutes
-    reward: { xp: 6000, coins: 1200, title: 'Master of Knowledge' },
-    icon: '👑',
-    category: 'study',
-    requirement: 'Study for 200 hours (12000 minutes)',
-  },
-  
-  // Pomodoro Achievements
-  {
-    id: 'achieve_complete_25_pomodoros',
-    title: 'Focus Starter',
-    description: 'Complete 25 Pomodoro sessions total',
-    type: 'achievement',
-    target: 25,
-    reward: { xp: 300, coins: 60, title: 'Focus Starter' },
-    icon: '🍅',
-    category: 'pomodoro',
-    requirement: 'Complete 25 Pomodoro sessions',
-  },
-  {
-    id: 'achieve_complete_50_pomodoros',
-    title: 'Concentration Pro',
-    description: 'Complete 50 Pomodoro sessions total',
-    type: 'achievement',
-    target: 50,
-    reward: { xp: 600, coins: 120, title: 'Concentration Pro' },
-    icon: '⏰',
-    category: 'pomodoro',
-    requirement: 'Complete 50 Pomodoro sessions',
-  },
-  {
-    id: 'achieve_complete_100_pomodoros',
-    title: 'Focus Master',
-    description: 'Complete 100 Pomodoro sessions total',
-    type: 'achievement',
-    target: 100,
-    reward: { xp: 1200, coins: 250, title: 'Focus Master' },
-    icon: '🎯',
-    category: 'pomodoro',
-    requirement: 'Complete 100 Pomodoro sessions',
-  },
-  {
-    id: 'achieve_complete_250_pomodoros',
-    title: 'Zen Master',
-    description: 'Complete 250 Pomodoro sessions total',
-    type: 'achievement',
-    target: 250,
-    reward: { xp: 3000, coins: 600, title: 'Zen Master' },
-    icon: '🧘',
-    category: 'pomodoro',
-    requirement: 'Complete 250 Pomodoro sessions',
-  },
-  {
-    id: 'achieve_complete_500_pomodoros',
-    title: 'Ultimate Focus',
-    description: 'Complete 500 Pomodoro sessions total',
-    type: 'achievement',
-    target: 500,
-    reward: { xp: 6000, coins: 1200, title: 'Ultimate Focus' },
-    icon: '🔥',
-    category: 'pomodoro',
-    requirement: 'Complete 500 Pomodoro sessions',
-  },
-  
-  // Pet Achievements
-  {
-    id: 'achieve_get_rare_pet',
-    title: 'Rare Pet Owner',
-    description: 'Obtain a rare rarity pet',
-    type: 'achievement',
-    target: 1,
-    reward: { xp: 500, coins: 100, title: 'Rare Pet Owner' },
-    icon: '🦊',
-    category: 'pet',
-    requirement: 'Obtain a rare rarity pet',
-  },
-  {
-    id: 'achieve_get_epic_pet',
-    title: 'Elite Tamer',
-    description: 'Obtain an epic rarity pet',
-    type: 'achievement',
-    target: 1,
-    reward: { xp: 1000, coins: 200, title: 'Elite Tamer' },
-    icon: '🦄',
-    category: 'pet',
-    requirement: 'Obtain an epic rarity pet',
-  },
-  {
-    id: 'achieve_get_legendary_pet',
-    title: 'Legendary Tamer',
-    description: 'Obtain a legendary rarity pet',
-    type: 'achievement',
-    target: 1,
-    reward: { xp: 2000, coins: 500, title: 'Legendary Tamer' },
-    icon: '🐉',
-    category: 'pet',
-    requirement: 'Obtain a legendary rarity pet',
-  },
-  {
-    id: 'achieve_get_mythical_pet',
-    title: 'Mythical Master',
-    description: 'Obtain a mythical rarity pet',
-    type: 'achievement',
-    target: 1,
-    reward: { xp: 5000, coins: 1500, title: 'Mythical Master' },
-    icon: '✨',
-    category: 'pet',
-    requirement: 'Obtain a mythical rarity pet',
-  },
-  {
-    id: 'achieve_get_secret_pet',
-    title: 'Secret Keeper',
-    description: 'Obtain a secret rarity pet',
-    type: 'achievement',
-    target: 1,
-    reward: { xp: 10000, coins: 3000, title: 'Secret Keeper' },
-    icon: '🌌',
-    category: 'pet',
-    requirement: 'Obtain a secret rarity pet',
-  },
-  {
-    id: 'achieve_feed_pet_50_times',
-    title: 'Caring Companion',
-    description: 'Feed your pet 50 times total',
-    type: 'achievement',
-    target: 50,
-    reward: { xp: 500, coins: 100, title: 'Caring Companion' },
-    icon: '🍎',
-    category: 'pet',
-    requirement: 'Feed your pet 50 times',
-  },
-  {
-    id: 'achieve_feed_pet_100_times',
-    title: 'Pet Lover',
-    description: 'Feed your pet 100 times total',
-    type: 'achievement',
-    target: 100,
-    reward: { xp: 1000, coins: 200, title: 'Pet Lover' },
-    icon: '❤️',
-    category: 'pet',
-    requirement: 'Feed your pet 100 times',
-  },
-  
-  // Coin Achievements
-  {
-    id: 'achieve_earn_1000_coins',
-    title: 'Wealthy Student',
-    description: 'Earn 1000 coins total',
-    type: 'achievement',
-    target: 1000,
-    reward: { xp: 500, coins: 100, title: 'Wealthy Student' },
-    icon: '💰',
-    category: 'coins',
-    requirement: 'Earn 1000 coins',
-  },
-  {
-    id: 'achieve_earn_5000_coins',
-    title: 'Treasure Hunter',
-    description: 'Earn 5000 coins total',
-    type: 'achievement',
-    target: 5000,
-    reward: { xp: 2000, coins: 400, title: 'Treasure Hunter' },
-    icon: '💎',
-    category: 'coins',
-    requirement: 'Earn 5000 coins',
-  },
-  {
-    id: 'achieve_earn_10000_coins',
-    title: 'Millionaire Scholar',
-    description: 'Earn 10000 coins total',
-    type: 'achievement',
-    target: 10000,
-    reward: { xp: 5000, coins: 1000, title: 'Millionaire Scholar' },
-    icon: '💵',
-    category: 'coins',
-    requirement: 'Earn 10000 coins',
-  },
-  
-  // Streak Achievements
-  {
-    id: 'achieve_7_day_streak',
-    title: 'Week Warrior',
-    description: 'Maintain a 7-day study streak',
-    type: 'achievement',
-    target: 7,
-    reward: { xp: 700, coins: 140, title: 'Week Warrior' },
-    icon: '🔥',
-    category: 'streak',
-    requirement: 'Study for 7 consecutive days',
-  },
-  {
-    id: 'achieve_30_day_streak',
-    title: 'Monthly Champion',
-    description: 'Maintain a 30-day study streak',
-    type: 'achievement',
-    target: 30,
-    reward: { xp: 3000, coins: 600, title: 'Monthly Champion' },
-    icon: '📅',
-    category: 'streak',
-    requirement: 'Study for 30 consecutive days',
-  },
-];
 
 // Buff/Debuff system
 const BUFF_TYPES = ['xpBoost', 'coinBoost'];
@@ -1328,7 +992,6 @@ const appReducer = (state, action) => {
     case ActionTypes.COMPLETE_QUEST: {
       const { questId, questType } = action.payload;
       const updatedQuests = { ...state.quests };
-      let titleReward = null;
       
       if (questType === 'daily') {
         updatedQuests.daily.quests = updatedQuests.daily.quests.map(q =>
@@ -1338,28 +1001,9 @@ const appReducer = (state, action) => {
         updatedQuests.weekly.quests = updatedQuests.weekly.quests.map(q =>
           q.id === questId ? { ...q, completed: true, completedAt: new Date().toISOString() } : q
         );
-      } else if (questType === 'achievement') {
-        const achievement = updatedQuests.achievements.find(q => q.id === questId);
-        if (achievement && achievement.reward?.title) {
-          titleReward = achievement.reward.title;
-        }
-        updatedQuests.achievements = updatedQuests.achievements.map(q =>
-          q.id === questId ? { ...q, completed: true, completedAt: new Date().toISOString() } : q
-        );
       }
       
       saveQuests(updatedQuests, userId);
-      
-      // If achievement grants a title, add it to gamification
-      if (titleReward) {
-        const updatedGamification = {
-          ...state.gamification,
-          unlockedTitles: [...(state.gamification.unlockedTitles || []), titleReward],
-        };
-        saveGamification(updatedGamification, userId);
-        return { ...state, quests: updatedQuests, gamification: updatedGamification };
-      }
-      
       return { ...state, quests: updatedQuests };
     }
 
@@ -1539,12 +1183,6 @@ export const AppProvider = ({ children }) => {
     if (gamification.pityCounter === undefined || gamification.pityCounter === null) {
       gamification.pityCounter = 0;
     }
-    if (!gamification.unlockedTitles) {
-      gamification.unlockedTitles = [];
-    }
-    if (gamification.equippedTitle === undefined) {
-      gamification.equippedTitle = null;
-    }
     if (gamification.feedCount === undefined) {
       gamification.feedCount = 0;
     }
@@ -1581,28 +1219,8 @@ export const AppProvider = ({ children }) => {
       dispatch({ type: ActionTypes.RESET_WEEKLY_QUESTS, payload: weeklyQuests, userId });
       quests.weekly = { lastReset: resetTime, quests: weeklyQuests };
     }
-    
-    // Initialize / migrate achievements
-    const generatedAchievements = generateAchievementQuests().map(q => ({ ...q, completed: false }));
-    if (!quests.achievements || quests.achievements.length === 0) {
-      // Fresh init
-      quests.achievements = generatedAchievements;
-      quests.progress = quests.progress || {};
-      saveQuests(quests, userId);
-    } else if (quests.achievements.length < generatedAchievements.length) {
-      // Migration: merge existing achievements with new ones by id
-      const existingById = {};
-      quests.achievements.forEach(a => {
-        existingById[a.id] = a;
-      });
-      const merged = generatedAchievements.map(a => {
-        const existing = existingById[a.id];
-        return existing ? { ...a, completed: existing.completed } : a;
-      });
-      quests.achievements = merged;
-      quests.progress = quests.progress || {};
-      saveQuests(quests, userId);
-    } else if (!quests.progress) {
+
+    if (!quests.progress) {
       quests.progress = {};
     }
     
@@ -2180,25 +1798,6 @@ export const AppProvider = ({ children }) => {
       return PET_SPIN_COST;
     },
 
-    // Title management
-    equipTitle: (title) => {
-      const updatedGamification = {
-        ...state.gamification,
-        equippedTitle: title,
-      };
-      saveGamification(updatedGamification, userId);
-      dispatch({ type: ActionTypes.SET_GAMIFICATION, payload: updatedGamification, userId });
-    },
-
-    unequipTitle: () => {
-      const updatedGamification = {
-        ...state.gamification,
-        equippedTitle: null,
-      };
-      saveGamification(updatedGamification, userId);
-      dispatch({ type: ActionTypes.SET_GAMIFICATION, payload: updatedGamification, userId });
-    },
-
     // Theme management
     buyTheme: (theme) => {
       const unlockedThemes = state.gamification.unlockedThemes || ['default'];
@@ -2265,7 +1864,6 @@ export const AppProvider = ({ children }) => {
       const allQuests = [
         ...(quests.daily?.quests || []),
         ...(quests.weekly?.quests || []),
-        ...(quests.achievements || []),
       ].filter(q => !q.completed && q.category === category);
 
       allQuests.forEach(quest => {
@@ -2282,8 +1880,8 @@ export const AppProvider = ({ children }) => {
           newProgress = currentProgress + value;
         } else if (category === 'level') {
           newProgress = Math.max(currentProgress, value); // level is absolute
-        } else if (category === 'achievement') {
-          newProgress = Math.max(currentProgress, value); // achievement is absolute
+        } else if (category === 'meta') {
+          newProgress = Math.max(currentProgress, value); // meta quests use absolute progress
         }
 
         if (newProgress >= quest.target) {

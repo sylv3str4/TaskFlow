@@ -87,8 +87,6 @@ const DevPanel = () => {
         coins: 0,
         pityCounter: 0,
         inventory: {},
-        equippedTitle: null,
-        unlockedTitles: [],
         feedCount: 0,
         currentTheme: 'default',
         unlockedThemes: ['default'],
@@ -115,7 +113,6 @@ const DevPanel = () => {
           lastReset: null,
           quests: [],
         },
-        achievements: [],
         progress: {},
       };
       saveQuests(defaultQuests, userId);

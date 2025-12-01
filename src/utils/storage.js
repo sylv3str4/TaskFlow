@@ -108,8 +108,6 @@ const defaultGamification = {
   coins: 0,
   pityCounter: 0,
   inventory: {},
-  equippedTitle: null,
-  unlockedTitles: [],
   feedCount: 0, // Track total pet feedings
   currentTheme: 'default',
   unlockedThemes: ['default'],
@@ -140,7 +138,6 @@ const defaultQuests = {
     lastReset: null,
     quests: [],
   },
-  achievements: [],
   progress: {},
 };
 
