@@ -25,7 +25,6 @@ import {
   Backpack,
   X,
   Plus,
-  Check,
   Search,
   ArrowUpDown,
   Trash2,
@@ -1053,20 +1052,6 @@ const PetSanctuary = () => {
                                   {pet.rarity}
                                 </span>
                               </div>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              {isEquipped && !isMassDeleteMode && (
-                                <Check className="text-green-600 dark:text-green-400" size={18} />
-                              )}
-                              {!isMassDeleteMode && (
-                                <button
-                                  onClick={() => handleDeletePet(pet.id)}
-                                  className="p-1.5 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                                  title="Delete pet"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              )}
                             </div>
                           </div>
 
