@@ -74,44 +74,6 @@ A comprehensive, modern web application designed to help students plan, track, a
 - **Build Tool**: Create React App
 - **State Management**: React Context API
 
-## 📦 Installation
-
-### Prerequisites
-
-- Node.js (v14 or higher)
-- npm or yarn package manager
-
-### Setup Instructions
-
-1. **Clone or navigate to the project directory**
-   ```bash
-   cd TaskFllow
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Start the development server**
-   ```bash
-   npm start
-   ```
-
-4. **Open your browser**
-   - The app will automatically open at `http://localhost:3000`
-   - If it doesn't, navigate to the URL manually
-
-### Build for Production
-
-To create an optimized production build:
-
-```bash
-npm run build
-```
-
-The build folder will contain the production-ready files that can be deployed to any static hosting service.
-
 ## 📖 Usage Guide
 
 ### Getting Started
@@ -186,38 +148,6 @@ The app implements the Pomodoro Technique:
 - **Priority Distribution**: Understand your task organization
 - **Category Distribution**: See which types of tasks you focus on most
 
-## 📁 Project Structure
-
-```
-TaskFllow/
-├── public/
-│   └── index.html          # HTML template
-├── src/
-│   ├── components/         # React components
-│   │   ├── TaskManager.js      # Task management component
-│   │   ├── PomodoroTimer.js    # Pomodoro timer component
-│   │   ├── AnalyticsDashboard.js # Analytics and charts
-│   │   ├── Settings.js          # Settings component
-│   │   ├── Sidebar.js           # Sidebar navigation
-│   │   ├── Login.js             # Login component
-│   │   ├── Signup.js            # Signup component
-│   │   ├── UserProfile.js       # User profile component
-│   │   └── Toast.js             # Toast notification component
-│   ├── context/
-│   │   ├── AppContext.js        # Global state management
-│   │   ├── AuthContext.js       # Authentication context
-│   │   └── ToastContext.js     # Toast notifications context
-│   ├── utils/
-│   │   └── storage.js           # Local storage utilities
-│   ├── App.js              # Main app component
-│   ├── index.js            # React entry point
-│   └── index.css           # Global styles and TailwindCSS
-├── package.json            # Dependencies and scripts
-├── tailwind.config.js     # TailwindCSS configuration
-├── postcss.config.js      # PostCSS configuration
-└── README.md              # This file
-```
-
 ## 🔑 Key Features Explained
 
 ### Account System
@@ -235,16 +165,6 @@ TaskFllow/
 - **Exam**: Exam preparation tasks
 - **Reading**: Reading assignments
 - **Other**: Miscellaneous tasks
-
-### Local Storage Implementation
-
-All data is stored in the browser's local storage:
-- **User Accounts**: Stored securely with encrypted passwords (in production, use proper hashing)
-- **Tasks**: Stored as JSON array per user
-- **Study Logs**: Session history with timestamps per user
-- **Settings**: User preferences and timer configurations per user
-
-Data persists across browser sessions and page refreshes.
 
 ### State Management
 
@@ -270,42 +190,6 @@ The app uses React Context API for centralized state management:
 - **Smooth Transitions**: Animated theme switching
 - **Persistent**: Remembers your preference per user
 - **Complete Coverage**: All components support dark mode
-
-## 🎨 Customization
-
-### Changing Colors
-
-Edit `tailwind.config.js` to customize the color scheme:
-
-```javascript
-colors: {
-  primary: {
-    // Your custom primary colors
-  },
-}
-```
-
-### Adjusting Animations
-
-Modify animation durations and effects in `tailwind.config.js`:
-
-```javascript
-animation: {
-  'fade-in': 'fadeIn 0.3s ease-in-out',
-  // Add your custom animations
-}
-```
-
-### Adding Categories
-
-Edit the `CATEGORIES` array in `src/components/TaskManager.js`:
-
-```javascript
-const CATEGORIES = [
-  { value: 'your-category', label: 'Your Category', color: 'bg-color-100...' },
-  // Add more categories
-];
-```
 
 ## 🌐 Browser Support
 
@@ -347,7 +231,6 @@ const CATEGORIES = [
 ## 🚧 Future Enhancements
 
 Potential features for future versions:
-- Cloud sync across devices
 - Study streak tracking
 - Goal setting and achievements
 - Study group collaboration
